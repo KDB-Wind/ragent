@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.rag.core.memory;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.rag.config.MemoryProperties;
+import com.nageoffer.ai.ragent.rag.core.source.CitationMarkup;
 import com.nageoffer.ai.ragent.rag.controller.vo.ConversationMessageVO;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.rag.enums.ConversationMessageOrder;
@@ -80,6 +81,10 @@ public class JdbcConversationMemoryStore implements ConversationMemoryStore {
                 .content(message.getContent())
                 .thinkingContent(message.getThinkingContent())
                 .thinkingDuration(message.getThinkingDuration())
+                .sources(message.getSources())
+                .retrievedChunks(message.getRetrievedChunks())
+                .replyToMessageId(message.getReplyToMessageId())
+                .messageStatus(message.getMessageStatus() == null ? null : message.getMessageStatus().name())
                 .build();
         String messageId = conversationMessageService.addMessage(conversationMessage);
 
@@ -104,9 +109,13 @@ public class JdbcConversationMemoryStore implements ConversationMemoryStore {
         if (record == null || StrUtil.isBlank(record.getContent())) {
             return null;
         }
+        ChatMessage.Role role = ChatMessage.Role.fromString(record.getRole());
+        String content = role == ChatMessage.Role.ASSISTANT
+                ? CitationMarkup.strip(record.getContent())
+                : record.getContent();
         return new ChatMessage(
-                ChatMessage.Role.fromString(record.getRole()),
-                record.getContent()
+                role,
+                content
         );
     }
 
