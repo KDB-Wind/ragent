@@ -55,6 +55,22 @@ mcp-server  -> (独立应用，无内部模块依赖)
 - **模型路由与容错**：Chat / Embedding / Rerank 均为候选模型配置驱动，含优先级、失败阈值、熔断恢复；供应商差异留在 infra-ai
 - **入库管线**：文档入库为 `IngestionNode` 节点编排 Pipeline（解析→增强→分块→向量化→写库）
 
+## 配置与凭据
+
+application.yaml 携带本地开发默认凭据，生产部署必须覆盖。`ProductionCredentialGuard`（`bootstrap` 模块，`EnvironmentPostProcessor`，Boot 3 机制注册）在启动最前置阶段执行 fail-fast：
+
+- **放行条件**：未显式激活任何 profile，或激活 profile 集合含 `local` / `dev` / `test` 任一。本地直接启动（无 profile）行为保持不变。
+- **检查时机**：其他 profile（如 `prod`）下，对以下敏感键检查生效值，命中开发默认值即抛 `IllegalStateException` 中断启动（消息只含键名，不含值）：
+  - `spring.datasource.username`
+  - `spring.datasource.password`
+  - `spring.data.redis.password`
+  - `rag.storage.s3.access-key`
+  - `rag.storage.s3.secret-key`
+- **占位符检查**：值以 `${` 开头且无默认值时（如 `${DB_PASSWORD}`），若环境变量/secret 无法解析同样中断启动；`${KEY:默认值}` 的默认值命中开发默认凭据集合也会中断。
+- **模型 API key 走环境变量属正向机制**（`BAILIAN_API_KEY`、`SILICONFLOW_API_KEY`、`AIHUBMIX_API_KEY`、`MINERU_API_KEY`、`OSS_ACCESS_KEY`、`OSS_SECRET_KEY`、`YDC_API_KEY` 等），不参与守卫检查，但生产必须提供。
+
+生产部署的完整键清单与示例见 `docs/production-configuration.md`。密钥轮换属部署侧运维，守卫不参与；轮换时保证新值先注入、旧值下线，避免空窗期。
+
 ## 扩展点
 
 按 Spring Bean 自动发现，新增能力优先走扩展点而非改核心分发逻辑：
