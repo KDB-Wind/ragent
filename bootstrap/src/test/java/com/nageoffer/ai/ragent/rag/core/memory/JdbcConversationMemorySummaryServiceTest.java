@@ -47,6 +47,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -103,9 +104,8 @@ class JdbcConversationMemorySummaryServiceTest {
         when(redissonClient.getLock(anyString())).thenReturn(lock);
         when(lock.tryLock()).thenReturn(true);
         when(lock.isHeldByCurrentThread()).thenReturn(true);
-        // promptTemplateLoader 仅 decorateIfNeeded 路径使用，当前用例不覆盖该路径；
-        // 安全桩防止将来加用例时静默取到 null
-        when(promptTemplateLoader.renderSection(anyString(), anyString(), anyMap())).thenReturn("wrapped summary");
+        // 上游 5a1af64 起该 stub 在摘要刷新用例中不触发，需 lenient 保持兼容
+        lenient().when(promptTemplateLoader.renderSection(anyString(), anyString(), anyMap())).thenReturn("wrapped summary");
     }
 
     @Test
