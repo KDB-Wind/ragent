@@ -1,6 +1,14 @@
 --- section: kb-section ---
-{snippet_section}<content>
-{chunks_body}
+{snippet_section}{doc_blocks}
+
+--- section: kb-doc-block ---
+<content data-ragent-doc-id="{doc_id}">
+{chunks}
+</content>
+
+--- section: kb-doc-block-anonymous ---
+<content>
+{chunks}
 </content>
 
 --- section: snippet-rules ---
@@ -57,4 +65,3 @@
 <conversation-summary>
 {content}
 </conversation-summary>
-

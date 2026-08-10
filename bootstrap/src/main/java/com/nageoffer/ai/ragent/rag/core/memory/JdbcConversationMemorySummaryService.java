@@ -20,9 +20,13 @@ package com.nageoffer.ai.ragent.rag.core.memory;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
+import com.nageoffer.ai.ragent.rag.core.source.CitationMarkup;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
+import com.nageoffer.ai.ragent.infra.enums.Tier;
 import com.nageoffer.ai.ragent.rag.config.MemoryProperties;
+import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptResolver;
+import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptSlot;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.rag.dao.entity.ConversationMessageDO;
 import com.nageoffer.ai.ragent.rag.dao.entity.ConversationSummaryDO;
@@ -45,7 +49,6 @@ import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CONTEXT_FORMAT_PATH;
-import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CONVERSATION_SUMMARY_PROMPT_PATH;
 
 @Slf4j
 @Service
@@ -59,6 +62,7 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
     private final MemoryProperties memoryProperties;
     private final LLMService llmService;
     private final PromptTemplateLoader promptTemplateLoader;
+    private final AgentPromptResolver agentPromptResolver;
     private final RedissonClient redissonClient;
     private final Executor memorySummaryExecutor;
 
@@ -124,13 +128,19 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
             if (latestUserTurns.isEmpty()) {
                 return;
             }
-            String cutoffId = resolveCutoffId(latestUserTurns);
-            if (StrUtil.isBlank(cutoffId)) {
+            String historyStartId = resolveHistoryStartId(latestUserTurns);
+            if (StrUtil.isBlank(historyStartId)) {
                 return;
             }
 
             String afterId = resolveSummaryStartId(conversationId, userId, latestSummary);
-            if (afterId != null && Long.parseLong(afterId) >= Long.parseLong(cutoffId)) {
+            if (afterId != null && Long.parseLong(afterId) >= Long.parseLong(historyStartId)) {
+                return;
+            }
+
+            // 摘要覆盖约一半原文窗口；只有这段重叠滑出窗口后才再次生成摘要
+            String summaryCutoffId = resolveSummaryCutoffId(latestUserTurns);
+            if (StrUtil.isBlank(summaryCutoffId)) {
                 return;
             }
 
@@ -138,7 +148,7 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
                     conversationId,
                     userId,
                     afterId,
-                    cutoffId
+                    summaryCutoffId
             );
             if (CollUtil.isEmpty(toSummarize)) {
                 return;
@@ -176,8 +186,8 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
 
         int summaryMaxChars = memoryProperties.getSummaryMaxChars();
         List<ChatMessage> summaryMessages = new ArrayList<>();
-        String summaryPrompt = promptTemplateLoader.render(
-                CONVERSATION_SUMMARY_PROMPT_PATH,
+        String summaryPrompt = agentPromptResolver.render(
+                AgentPromptSlot.CONVERSATION_SUMMARY,
                 Map.of("summary_max_chars", String.valueOf(summaryMaxChars))
         );
         summaryMessages.add(ChatMessage.system(summaryPrompt));
@@ -200,7 +210,7 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
                 .thinking(false)
                 .build();
         try {
-            String result = llmService.chat(request);
+            String result = llmService.chat(request, Tier.FAST);
             log.info("对话摘要生成 - resultChars: {}", result.length());
 
             return result;
@@ -223,7 +233,7 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
                     if ("user".equals(role)) {
                         return ChatMessage.user(item.getContent());
                     } else if ("assistant".equals(role)) {
-                        return ChatMessage.assistant(item.getContent());
+                        return ChatMessage.assistant(CitationMarkup.strip(item.getContent()));
                     }
                     return null;
                 })
@@ -253,7 +263,7 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
         return conversationGroupService.findMaxMessageIdAtOrBefore(conversationId, userId, after);
     }
 
-    private String resolveCutoffId(List<ConversationMessageDO> latestUserTurns) {
+    private String resolveHistoryStartId(List<ConversationMessageDO> latestUserTurns) {
         if (CollUtil.isEmpty(latestUserTurns)) {
             return null;
         }
@@ -261,6 +271,15 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
         // 倒序列表的最后一个就是最早的
         ConversationMessageDO oldest = latestUserTurns.get(latestUserTurns.size() - 1);
         return oldest == null ? null : oldest.getId();
+    }
+
+    private String resolveSummaryCutoffId(List<ConversationMessageDO> latestUserTurns) {
+        if (CollUtil.isEmpty(latestUserTurns)) {
+            return null;
+        }
+
+        ConversationMessageDO overlapBoundary = latestUserTurns.get((latestUserTurns.size() - 1) / 2);
+        return overlapBoundary == null ? null : overlapBoundary.getId();
     }
 
     private String resolveLastMessageId(List<ConversationMessageDO> toSummarize) {

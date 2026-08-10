@@ -26,6 +26,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.nageoffer.ai.ragent.infra.util.LLMResponseCleaner;
+import com.nageoffer.ai.ragent.infra.util.LogSafe;
 import com.nageoffer.ai.ragent.rag.dao.entity.IntentNodeDO;
 import com.nageoffer.ai.ragent.rag.dao.mapper.IntentNodeMapper;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
@@ -137,6 +138,10 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
     public List<NodeScore> classifyTargets(String question) {
         // 每次都从Redis读取最新数据
         IntentTreeData data = loadIntentTreeData();
+        if (data.leafNodes.isEmpty()) {
+            log.debug("意图树没有可用叶子节点，跳过 LLM 意图识别");
+            return List.of();
+        }
 
         String systemPrompt = buildPrompt(data.leafNodes);
         ChatRequest request = ChatRequest.builder()
@@ -149,14 +154,25 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
                 .thinking(false)
                 .build();
 
-        String raw = llmService.chat(request);
+        // 标准档调用；调用失败或 JSON 非法均返回空意图（下游把空意图当作"无意图"兜底）
+        String raw;
+        try {
+            raw = llmService.chat(request);
+        } catch (Exception e) {
+            log.warn("意图识别 LLM 调用失败，返回空意图", e);
+            return List.of();
+        }
+        return parseScores(raw, data, question);
+    }
 
+    /**
+     * 解析意图打分，按 score 降序返回；任何解析失败/畸形均返回空列表
+     */
+    private List<NodeScore> parseScores(String raw, IntentTreeData data, String question) {
         try {
             // 移除可能的 markdown 代码块标记
             String cleanedRaw = LLMResponseCleaner.stripMarkdownCodeFence(raw);
-
             JsonElement root = JsonParser.parseString(cleanedRaw);
-
             JsonArray arr;
             if (root.isJsonArray()) {
                 arr = root.getAsJsonArray();
@@ -164,7 +180,7 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
                 // 容错：如果模型外面又包了一层 { "results": [...] }
                 arr = root.getAsJsonObject().getAsJsonArray("results");
             } else {
-                log.warn("LLM 返回了非预期的 JSON 格式, 原始响应: {}", raw);
+                log.warn("LLM 返回了非预期的 JSON 格式, 原始响应: {}", LogSafe.preview(raw));
                 return List.of();
             }
 
@@ -176,15 +192,13 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
                 if (!obj.has("id") || !obj.has("score")) continue;
 
                 String id = obj.get("id").getAsString();
-                double score = obj.get("score").getAsDouble();
-
                 IntentNode node = data.id2Node.get(id);
                 if (node == null) {
                     log.warn("LLM 返回了未知的意图节点 ID: {}, 已跳过", id);
                     continue;
                 }
 
-                scores.add(new NodeScore(node, score));
+                scores.add(new NodeScore(node, obj.get("score").getAsDouble()));
             }
 
             // 降序排序
@@ -201,7 +215,7 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
             );
             return scores;
         } catch (Exception e) {
-            log.warn("解析 LLM 响应失败, 原始内容: {}", raw, e);
+            log.warn("意图打分解析失败, 原始响应: {}", LogSafe.preview(raw), e);
             return List.of();
         }
     }
@@ -281,6 +295,13 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
             node.setParentId(each.getParentCode());
             node.setMcpToolId(each.getMcpToolId());
             node.setParamPromptTemplate(each.getParamPromptTemplate());
+            if (CollUtil.isEmpty(each.getCollectionNames())) {
+                node.setCollectionNames(
+                        each.getCollectionName() == null || each.getCollectionName().isBlank()
+                                ? List.of()
+                                : List.of(each.getCollectionName())
+                );
+            }
             // 确保 children 不为 null（避免后面 add NPE）
             if (node.getChildren() == null) {
                 node.setChildren(new ArrayList<>());

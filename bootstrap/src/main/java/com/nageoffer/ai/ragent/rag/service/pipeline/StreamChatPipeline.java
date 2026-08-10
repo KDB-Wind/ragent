@@ -21,6 +21,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
+import com.nageoffer.ai.ragent.framework.convention.SourceRef;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import com.nageoffer.ai.ragent.infra.chat.StreamCallback;
 import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
@@ -28,16 +29,19 @@ import com.nageoffer.ai.ragent.rag.core.guidance.GuidanceDecision;
 import com.nageoffer.ai.ragent.rag.core.guidance.IntentGuidanceService;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentResolver;
 import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryService;
+import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptResolver;
+import com.nageoffer.ai.ragent.rag.core.prompt.AgentPromptSlot;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptContext;
-import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.rag.core.prompt.RAGPromptService;
-import com.nageoffer.ai.ragent.rag.core.retrieve.RetrievalEngine;
+import com.nageoffer.ai.ragent.rag.core.retrieval.RetrievalEngine;
 import com.nageoffer.ai.ragent.rag.core.rewrite.QueryRewriteService;
 import com.nageoffer.ai.ragent.rag.core.rewrite.RewriteResult;
+import com.nageoffer.ai.ragent.rag.core.source.CitationContextEnricher;
+import com.nageoffer.ai.ragent.rag.core.source.GroundingChunksAssembler;
+import com.nageoffer.ai.ragent.rag.core.source.SourcesAssembler;
 import com.nageoffer.ai.ragent.rag.dto.IntentGroup;
 import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
-import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
 import com.nageoffer.ai.ragent.rag.service.handler.StreamTaskManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,8 +49,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
-
-import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CHAT_SYSTEM_PROMPT_PATH;
 
 /**
  * 流式对话流水线
@@ -61,7 +63,6 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CHAT_SYSTEM_PROMP
 @RequiredArgsConstructor
 public class StreamChatPipeline {
 
-    private final SearchChannelProperties searchProperties;
     private final ConversationMemoryService memoryService;
     private final QueryRewriteService queryRewriteService;
     private final IntentResolver intentResolver;
@@ -69,8 +70,11 @@ public class StreamChatPipeline {
     private final RetrievalEngine retrievalEngine;
     private final LLMService llmService;
     private final RAGPromptService promptBuilder;
-    private final PromptTemplateLoader promptTemplateLoader;
+    private final AgentPromptResolver agentPromptResolver;
     private final StreamTaskManager taskManager;
+    private final SourcesAssembler sourcesAssembler;
+    private final GroundingChunksAssembler groundingChunksAssembler;
+    private final CitationContextEnricher citationContextEnricher;
 
     /**
      * 执行流式对话管道
@@ -98,11 +102,10 @@ public class StreamChatPipeline {
     // ==================== 流水线阶段 ====================
 
     private void loadMemory(StreamChatContext ctx) {
-        List<ChatMessage> history = memoryService.loadAndAppend(
-                ctx.getConversationId(),
-                ctx.getUserId(),
-                ChatMessage.user(ctx.getQuestion())
-        );
+        List<ChatMessage> history = memoryService.load(ctx.getConversationId(), ctx.getUserId());
+        String questionMessageId = memoryService.append(
+                ctx.getConversationId(), ctx.getUserId(), ChatMessage.user(ctx.getQuestion()));
+        ctx.getCallback().onReplyToMessageId(questionMessageId);
         ctx.setHistory(history);
     }
 
@@ -154,7 +157,7 @@ public class StreamChatPipeline {
     }
 
     private RetrievalContext retrieve(StreamChatContext ctx) {
-        return retrievalEngine.retrieve(ctx.getSubIntents(), searchProperties.getDefaultTopK());
+        return retrievalEngine.retrieve(ctx.getSubIntents());
     }
 
     private boolean handleEmptyRetrieval(StreamChatContext ctx, RetrievalContext retrievalCtx) {
@@ -170,6 +173,15 @@ public class StreamChatPipeline {
     private void streamRagResponse(StreamChatContext ctx, RetrievalContext retrievalCtx) {
         // 聚合所有意图用于 prompt 规划
         IntentGroup mergedGroup = intentResolver.mergeIntentGroup(ctx.getSubIntents());
+
+        // 检索完成后建立唯一来源编号：同一列表用于完成事件、来源面板与消息落库，开启引用时还作为行内角标编号
+        List<SourceRef> sources = sourcesAssembler.assemble(retrievalCtx.getIntentChunks());
+        ctx.getCallback().onSources(sources);
+        // 开关关闭时这一步只负责清掉上下文里的内部 docId，不注入编号
+        retrievalCtx.setKbContext(citationContextEnricher.enrich(retrievalCtx.getKbContext(), sources));
+
+        // 装配 grounding 片段随消息落库 供答案后推荐追问生成 grounding（不参与 prompt）
+        ctx.getCallback().onGroundingChunks(groundingChunksAssembler.assemble(retrievalCtx.getIntentChunks()));
 
         StreamCancellationHandle handle = streamLLMResponse(
                 ctx.getRewriteResult(),
@@ -188,7 +200,7 @@ public class StreamChatPipeline {
                                                           String customPrompt, StreamCallback callback) {
         String systemPrompt = StrUtil.isNotBlank(customPrompt)
                 ? customPrompt
-                : promptTemplateLoader.load(CHAT_SYSTEM_PROMPT_PATH);
+                : agentPromptResolver.resolve(AgentPromptSlot.SYSTEM_CHAT);
 
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(ChatMessage.system(systemPrompt));
@@ -214,7 +226,7 @@ public class StreamChatPipeline {
                 .kbContext(ctx.getKbContext())
                 .mcpIntents(intentGroup.mcpIntents())
                 .kbIntents(intentGroup.kbIntents())
-                .intentChunks(ctx.getIntentChunks())
+                .eligibleIntentIds(ctx.getEligibleIntentIds())
                 .build();
 
         List<ChatMessage> messages = promptBuilder.buildStructuredMessages(

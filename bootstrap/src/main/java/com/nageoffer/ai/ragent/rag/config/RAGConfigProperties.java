@@ -57,4 +57,26 @@ public class RAGConfigProperties {
      */
     @Value("${rag.rerank.enabled:true}")
     private Boolean rerankEnabled;
+
+    /**
+     * 上下文元数据富化开关
+     * <p>
+     * 控制是否在检索末端回表补齐 chunk 的文档归属信息（文档ID/序号/标题），
+     * 并在组装上下文时按文档聚合、组内按序号排列、带上文档标题作为内部锚点
+     * 关闭后组装退回按检索相关性平铺、不带来源
+     * 默认值：{@code true}
+     */
+    @Value("${rag.context.enrich.enabled:true}")
+    private Boolean contextEnrichEnabled;
+
+    /**
+     * 回答行内引用（数字角标）开关
+     * <p>
+     * 开启后为进入上下文的资料注入请求级引用编号，并动态追加行内引用规则，模型在正文末尾输出 {@code [N](#cite-N)}
+     * 关闭则不注入编号、不追加行内引用规则，省下这部分系统提示词与上下文开销以降低首字延迟；
+     * 文档级来源面板由 SSE 单独下发，不受此开关影响
+     * 默认值：{@code false}
+     */
+    @Value("${rag.citation.enabled:false}")
+    private Boolean citationEnabled;
 }

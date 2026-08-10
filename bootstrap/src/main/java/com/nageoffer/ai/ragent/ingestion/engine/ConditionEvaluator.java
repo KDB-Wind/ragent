@@ -29,6 +29,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.function.IntPredicate;
 
 /**
  * 条件评估器
@@ -45,6 +46,44 @@ public class ConditionEvaluator {
     }
 
     public boolean evaluate(IngestionContext context, JsonNode condition) {
+        return isStructurallyValid(condition) && evaluateValid(context, condition);
+    }
+
+    private boolean isStructurallyValid(JsonNode condition) {
+        if (condition == null || condition.isNull() || condition.isBoolean() || condition.isTextual()) {
+            return true;
+        }
+        if (!condition.isObject()) {
+            return false;
+        }
+        if (condition.has("all")) {
+            return isStructurallyValidGroup(condition.get("all"));
+        }
+        if (condition.has("any")) {
+            return isStructurallyValidGroup(condition.get("any"));
+        }
+        if (condition.has("not")) {
+            return isStructurallyValid(condition.get("not"));
+        }
+        if (condition.has("field")) {
+            return StringUtils.hasText(condition.path("field").asText(null));
+        }
+        return false;
+    }
+
+    private boolean isStructurallyValidGroup(JsonNode node) {
+        if (node == null || !node.isArray()) {
+            return false;
+        }
+        for (JsonNode item : node) {
+            if (!isStructurallyValid(item)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean evaluateValid(IngestionContext context, JsonNode condition) {
         if (condition == null || condition.isNull()) {
             return true;
         }
@@ -62,21 +101,21 @@ public class ConditionEvaluator {
                 return evalAny(context, condition.get("any"));
             }
             if (condition.has("not")) {
-                return !evaluate(context, condition.get("not"));
+                return !evaluateValid(context, condition.get("not"));
             }
             if (condition.has("field")) {
                 return evalRule(context, condition);
             }
         }
-        return true;
+        return false;
     }
 
     private boolean evalAll(IngestionContext context, JsonNode node) {
         if (node == null || !node.isArray()) {
-            return true;
+            return false;
         }
         for (JsonNode item : node) {
-            if (!evaluate(context, item)) {
+            if (!evaluateValid(context, item)) {
                 return false;
             }
         }
@@ -85,10 +124,10 @@ public class ConditionEvaluator {
 
     private boolean evalAny(IngestionContext context, JsonNode node) {
         if (node == null || !node.isArray()) {
-            return true;
+            return false;
         }
         for (JsonNode item : node) {
-            if (evaluate(context, item)) {
+            if (evaluateValid(context, item)) {
                 return true;
             }
         }
@@ -98,7 +137,7 @@ public class ConditionEvaluator {
     private boolean evalRule(IngestionContext context, JsonNode node) {
         String field = node.path("field").asText(null);
         if (!StringUtils.hasText(field)) {
-            return true;
+            return false;
         }
         String operator = node.path("operator").asText("eq");
         JsonNode valueNode = node.get("value");
@@ -122,10 +161,10 @@ public class ConditionEvaluator {
             case "in" -> in(left, right);
             case "contains" -> contains(left, right);
             case "regex" -> regex(left, right);
-            case "gt" -> compareNumber(left, right) > 0;
-            case "gte" -> compareNumber(left, right) >= 0;
-            case "lt" -> compareNumber(left, right) < 0;
-            case "lte" -> compareNumber(left, right) <= 0;
+            case "gt" -> compareNumbers(left, right, result -> result > 0);
+            case "gte" -> compareNumbers(left, right, result -> result >= 0);
+            case "lt" -> compareNumbers(left, right, result -> result < 0);
+            case "lte" -> compareNumbers(left, right, result -> result <= 0);
             case "exists" -> left != null;
             case "not_exists" -> left == null;
             default -> Objects.equals(normalize(left), normalize(right));
@@ -162,27 +201,27 @@ public class ConditionEvaluator {
         return String.valueOf(left).matches(String.valueOf(right));
     }
 
-    private int compareNumber(Object left, Object right) {
-        if (left == null || right == null) {
-            return 0;
-        }
+    private boolean compareNumbers(Object left, Object right, IntPredicate predicate) {
         Double l = toDouble(left);
         Double r = toDouble(right);
         if (l == null || r == null) {
-            return 0;
+            return false;
         }
-        return Double.compare(l, r);
+        return predicate.test(Double.compare(l, r));
     }
 
     private Double toDouble(Object value) {
+        Double number;
         if (value instanceof Number n) {
-            return n.doubleValue();
+            number = n.doubleValue();
+        } else {
+            try {
+                number = Double.parseDouble(String.valueOf(value));
+            } catch (Exception e) {
+                return null;
+            }
         }
-        try {
-            return Double.parseDouble(String.valueOf(value));
-        } catch (Exception e) {
-            return null;
-        }
+        return Double.isFinite(number) ? number : null;
     }
 
     private Object normalize(Object value) {

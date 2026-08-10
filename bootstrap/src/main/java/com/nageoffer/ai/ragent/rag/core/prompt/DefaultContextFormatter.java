@@ -20,22 +20,27 @@ package com.nageoffer.ai.ragent.rag.core.prompt;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.framework.convention.RetrievedChunkKey;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CONTEXT_FORMAT_PATH;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DefaultContextFormatter implements ContextFormatter {
@@ -43,36 +48,58 @@ public class DefaultContextFormatter implements ContextFormatter {
     private final PromptTemplateLoader templateLoader;
 
     @Override
-    public String formatKbContext(List<NodeScore> kbIntents, Map<String, List<RetrievedChunk>> rerankedByIntent, int topK) {
-        if (rerankedByIntent == null || rerankedByIntent.isEmpty()) {
+    public String formatKbContext(List<NodeScore> kbIntents,
+                                  Set<String> eligibleIntentIds,
+                                  List<RetrievedChunk> rerankedChunks,
+                                  int contextTopK) {
+        if (CollUtil.isEmpty(rerankedChunks)) {
             return "";
         }
-        if (CollUtil.isEmpty(kbIntents)) {
-            return formatChunksWithoutIntent(rerankedByIntent, topK);
+
+        List<NodeScore> eligibleIntents = eligibleIntents(kbIntents, eligibleIntentIds);
+        String branch = switch (eligibleIntents.size()) {
+            case 0 -> "无可用意图";
+            case 1 -> "单意图";
+            default -> "多意图";
+        };
+        log.info("检索归因 - 提示词分支: {}, 可用意图: {}",
+                branch,
+                eligibleIntents.stream().map(ns -> ns.getNode().getName()).toList());
+        if (eligibleIntents.isEmpty()) {
+            return formatChunksWithoutIntent(rerankedChunks, contextTopK);
         }
-        if (kbIntents.size() > 1) {
-            return formatMultiIntentContext(kbIntents, rerankedByIntent, topK);
+        if (eligibleIntents.size() > 1) {
+            return formatMultiIntentContext(eligibleIntents, rerankedChunks, contextTopK);
         }
-        return formatSingleIntentContext(kbIntents.get(0), rerankedByIntent, topK);
+        return formatSingleIntentContext(eligibleIntents.get(0), rerankedChunks, contextTopK);
+    }
+
+    private List<NodeScore> eligibleIntents(List<NodeScore> kbIntents,
+                                            Set<String> eligibleIntentIds) {
+        if (CollUtil.isEmpty(kbIntents) || CollUtil.isEmpty(eligibleIntentIds)) {
+            return List.of();
+        }
+        return kbIntents.stream()
+                .filter(nodeScore -> nodeScore != null && nodeScore.getNode() != null)
+                .filter(nodeScore -> eligibleIntentIds.contains(nodeScore.getNode().getId()))
+                .toList();
     }
 
     /**
      * 格式化单意图上下文
      */
-    private String formatSingleIntentContext(NodeScore nodeScore, Map<String, List<RetrievedChunk>> rerankedByIntent, int topK) {
-        List<RetrievedChunk> chunks = rerankedByIntent.get(nodeScore.getNode().getId());
-        if (CollUtil.isEmpty(chunks)) {
-            return "";
-        }
+    private String formatSingleIntentContext(NodeScore nodeScore, List<RetrievedChunk> rerankedChunks, int topK) {
         String snippet = StrUtil.emptyIfNull(nodeScore.getNode().getPromptSnippet()).trim();
-        String body = joinChunkTexts(chunks, topK);
-        return renderKbSection(renderSnippetRules(snippet), body);
+        String docBlocks = renderChunksGroupedByDoc(distinctChunks(rerankedChunks), topK);
+        return renderKbSection(renderSnippetRules(snippet), docBlocks);
     }
 
     /**
      * 格式化多意图上下文
      */
-    private String formatMultiIntentContext(List<NodeScore> kbIntents, Map<String, List<RetrievedChunk>> rerankedByIntent, int topK) {
+    private String formatMultiIntentContext(List<NodeScore> kbIntents,
+                                            List<RetrievedChunk> rerankedChunks,
+                                            int topK) {
         // 1. 合并所有意图的回答规则
         List<String> snippets = kbIntents.stream()
                 .map(ns -> ns.getNode().getPromptSnippet())
@@ -89,48 +116,31 @@ public class DefaultContextFormatter implements ContextFormatter {
             snippetSection = renderSnippetRules(numberedRules);
         }
 
-        // 2. 合并所有意图的文档片段（去重）
-        List<RetrievedChunk> allChunks = rerankedByIntent.values().stream()
-                .flatMap(List::stream)
-                .distinct()
-                .limit(topK)
-                .toList();
+        // 2. 合并所有意图的文档片段（按 chunk id 去重，保持相关性顺序）
+        List<RetrievedChunk> allChunks = distinctChunks(rerankedChunks);
 
         if (allChunks.isEmpty()) {
             return snippetSection;
         }
 
-        String body = allChunks.stream()
-                .map(RetrievedChunk::getText)
-                .collect(Collectors.joining("\n"));
-        return renderKbSection(snippetSection, body);
+        String docBlocks = renderChunksGroupedByDoc(allChunks, topK);
+        return renderKbSection(snippetSection, docBlocks);
     }
 
-    private String formatChunksWithoutIntent(Map<String, List<RetrievedChunk>> rerankedByIntent, int topK) {
-        int limit = topK > 0 ? topK : Integer.MAX_VALUE;
-        List<RetrievedChunk> chunks = new ArrayList<>();
-        for (List<RetrievedChunk> list : rerankedByIntent.values()) {
-            if (CollUtil.isEmpty(list)) {
-                continue;
-            }
-            for (RetrievedChunk chunk : list) {
-                chunks.add(chunk);
-                if (chunks.size() >= limit) {
-                    break;
-                }
-            }
-            if (chunks.size() >= limit) {
-                break;
-            }
-        }
+    private String formatChunksWithoutIntent(List<RetrievedChunk> rerankedChunks, int topK) {
+        List<RetrievedChunk> chunks = distinctChunks(rerankedChunks);
         if (chunks.isEmpty()) {
             return "";
         }
 
-        String body = chunks.stream()
-                .map(RetrievedChunk::getText)
-                .collect(Collectors.joining("\n"));
-        return renderKbSection("", body);
+        String docBlocks = renderChunksGroupedByDoc(chunks, topK);
+        return renderKbSection("", docBlocks);
+    }
+
+    private List<RetrievedChunk> distinctChunks(List<RetrievedChunk> chunks) {
+        Map<String, RetrievedChunk> distinct = new LinkedHashMap<>();
+        chunks.forEach(chunk -> distinct.putIfAbsent(RetrievedChunkKey.of(chunk), chunk));
+        return new ArrayList<>(distinct.values());
     }
 
     @Override
@@ -178,10 +188,10 @@ public class DefaultContextFormatter implements ContextFormatter {
 
     // ==================== 工具方法 ====================
 
-    private String renderKbSection(String snippetSection, String chunksBody) {
+    private String renderKbSection(String snippetSection, String docBlocks) {
         return templateLoader.renderSection(CONTEXT_FORMAT_PATH, "kb-section", Map.of(
                 "snippet_section", snippetSection,
-                "chunks_body", chunksBody
+                "doc_blocks", docBlocks
         ));
     }
 
@@ -192,11 +202,84 @@ public class DefaultContextFormatter implements ContextFormatter {
         return templateLoader.renderSection(CONTEXT_FORMAT_PATH, "snippet-rules", Map.of("rules", snippet));
     }
 
-    private String joinChunkTexts(List<RetrievedChunk> chunks, int topK) {
-        return chunks.stream()
-                .limit(topK)
-                .map(RetrievedChunk::getText)
+    /**
+     * 按文档聚合渲染 chunk 列表
+     * <p>
+     * 文档之间按相关性排序（各文档首个命中块在原列表中的顺序，即该文档最佳块的排名），
+     * 文档内部按 {@code chunkIndex} 升序还原原文顺序；docId 缺失的块各自单独成组、留在原位
+     */
+    private String renderChunksGroupedByDoc(List<RetrievedChunk> chunks, int topK) {
+        long limit = topK > 0 ? topK : Long.MAX_VALUE;
+        List<RetrievedChunk> limited = chunks.stream().limit(limit).toList();
+        if (limited.isEmpty()) {
+            return "";
+        }
+
+        // 按 docId 分组：LinkedHashMap 保持首次出现顺序 = 文档间的相关性排序；docId 为空的块各自单独成组
+        LinkedHashMap<String, List<RetrievedChunk>> groups = new LinkedHashMap<>();
+        int anonymousSeq = 0;
+        for (RetrievedChunk chunk : limited) {
+            String key = StrUtil.isNotBlank(chunk.getDocId()) ? chunk.getDocId() : "__nodoc__" + (anonymousSeq++);
+            groups.computeIfAbsent(key, k -> new ArrayList<>()).add(chunk);
+        }
+
+        return groups.values().stream()
+                .map(this::renderDocBlock)
                 .collect(Collectors.joining("\n"));
+    }
+
+    /**
+     * 渲染单个文档块：组内按序号排序后拼接，只带内部 docId 作为锚点
+     * <p>
+     * 刻意不注入文档标题：标题一旦进入上下文，模型就会写出"出自《XX》"之类的归因表述，
+     * 而提示词层面的禁令压不住。资料之间的区分交给 {@code ref} 编号，文档名只在前端来源列表展示
+     */
+    private String renderDocBlock(List<RetrievedChunk> group) {
+        List<RetrievedChunk> ordered = group.stream()
+                .sorted(Comparator.comparing(RetrievedChunk::getChunkIndex,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+
+        String chunks = joinDocBody(ordered);
+        String docId = sanitizeAttribute(resolveDocId(group));
+        if (StrUtil.isNotBlank(docId)) {
+            return templateLoader.renderSection(CONTEXT_FORMAT_PATH, "kb-doc-block", Map.of(
+                    "doc_id", docId,
+                    "chunks", chunks
+            ));
+        }
+        return templateLoader.renderSection(CONTEXT_FORMAT_PATH, "kb-doc-block-anonymous", Map.of(
+                "chunks", chunks
+        ));
+    }
+
+    /**
+     * 组内拼接文本：同文档的块按 index 排好后用换行顺次拼接
+     */
+    private String joinDocBody(List<RetrievedChunk> ordered) {
+        return ordered.stream()
+                .map(RetrievedChunk::getText)
+                .map(StrUtil::emptyIfNull)
+                .filter(text -> !text.isEmpty())
+                .collect(Collectors.joining("\n"));
+    }
+
+    /**
+     * 清洗属性值里会破坏伪标签结构的字符（引号、尖括号）
+     */
+    private String sanitizeAttribute(String value) {
+        if (StrUtil.isBlank(value)) {
+            return "";
+        }
+        return value.replaceAll("[\"<>]", "").trim();
+    }
+
+    private String resolveDocId(List<RetrievedChunk> group) {
+        return group.stream()
+                .map(RetrievedChunk::getDocId)
+                .filter(StrUtil::isNotBlank)
+                .findFirst()
+                .orElse("");
     }
 
     private String mergeAllResultsToText(Map<String, List<CallToolResult>> toolResults) {
