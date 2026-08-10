@@ -64,6 +64,22 @@ mcp-server  -> (独立应用，无内部模块依赖)
 - 新增 MCP 工具：实现 `MCPToolExecutor`
 - 新增入库节点：实现 `IngestionNode`
 
+## 上游同步
+
+本 fork 与上游 `nageoffer/ragent` 的同步 SOP 见 `docs/upstream-sync.md`。常用命令：
+
+```bash
+git fetch upstream
+git checkout -b sync/upstream-$(date +%Y%m%d) origin/main
+git merge upstream/main
+./mvnw -B -ntp test        # 合并后必跑
+cd frontend && npm ci && npm run test && npm run build
+git push origin sync/upstream-<日期>
+gh pr create --base main --head sync/upstream-<日期> --title "chore: sync upstream main (<日期>)"
+```
+
+冲突原则：测试基线（surefire 配置、vitest/RTL、CI workflow、AGENTS.md）保留 fork 版；上游业务代码不静默修改。
+
 ## CI 要求
 
 - `backend-maven`：`spotless:check` 与 `./mvnw -B -ntp verify` 必须通过（verify 包含默认单元测试集合；依赖外部服务的集成测试已用 `@Tag("integration")` 隔离，通过 `-P integration` 显式运行）

@@ -32,6 +32,15 @@ npm run build
 - [ ] 无 `git diff --check` 问题
 - [ ] 不在 commit 中包含凭据、密钥或本地审计产物
 
+## 上游同步
+
+本 fork 定期同步上游 `nageoffer/ragent` main，完整 SOP 见 [docs/upstream-sync.md](docs/upstream-sync.md)。要点：
+
+- 同步分支统一命名 `sync/upstream-<YYYYMMDD>`，合并 commit 标题 `chore: sync upstream main (<日期>)`。
+- 冲突原则：本 fork 的测试基线（surefire `excludedGroups` + `-P integration`、vitest/RTL 配置、CI workflow、AGENTS.md）一律保留 fork 版本；上游业务代码原样并入，不静默修改。
+- 合并后必须重新验证：后端 `./mvnw -B -ntp test`、前端 `npm ci && npm run test && npm run build`。
+- 上游同步只走 PR（main 受 ruleset 保护），不在本地直接 merge 到 main。
+
 ## Review 流程
 
 1. 提交 PR 后，GitHub Actions 自动运行 `backend-maven` 与 `frontend-build-lint`。
