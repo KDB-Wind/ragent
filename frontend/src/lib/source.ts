@@ -74,6 +74,7 @@ export interface SourceDisplayName {
  * 书名/文章名挤没。这里把次要信息抽到副标题，原始值仍由调用方保留在 title 属性里
  */
 export function displayName(source: SourceRef): SourceDisplayName {
+  // eslint-disable-next-line no-irregular-whitespace -- 正则需精确匹配全角空格 U+3000（业务数据来自网页抓取），\s 无法只匹配它
   const raw = (source.docName || "").replace(/　/g, " ");
   if (!raw.trim()) return { title: "未命名文档", detail: "" };
 

@@ -22,17 +22,17 @@ export interface ConversationMessageVO {
 }
 
 export async function listSessions() {
-  return api.get<ConversationVO[]>("/conversations");
+  return api.get<ConversationVO[], ConversationVO[]>("/conversations");
 }
 
 export async function deleteSession(conversationId: string) {
-  return api.delete<void>(`/conversations/${conversationId}`);
+  return api.delete<void, void>(`/conversations/${conversationId}`);
 }
 
 export async function renameSession(conversationId: string, title: string) {
-  return api.put<void>(`/conversations/${conversationId}`, { title });
+  return api.put<void, void>(`/conversations/${conversationId}`, { title });
 }
 
 export async function listMessages(conversationId: string) {
-  return api.get<ConversationMessageVO[]>(`/conversations/${conversationId}/messages`);
+  return api.get<ConversationMessageVO[], ConversationMessageVO[]>(`/conversations/${conversationId}/messages`);
 }

@@ -227,18 +227,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch (error) {
       toast.error((error as Error).message || "加载消息失败");
     } finally {
+      // finally 内不使用 return：会话已切换时只复位 loading，否则完整复位流式状态
       if (get().currentSessionId !== sessionId) {
         set({ isLoading: false });
-        return;
+      } else {
+        set({
+          isLoading: false,
+          isStreaming: false,
+          streamTaskId: null,
+          streamAbort: null,
+          streamingMessageId: null,
+          cancelRequested: false
+        });
       }
-      set({
-        isLoading: false,
-        isStreaming: false,
-        streamTaskId: null,
-        streamAbort: null,
-        streamingMessageId: null,
-        cancelRequested: false
-      });
     }
   },
   updateSessionTitle: (sessionId, title) => {

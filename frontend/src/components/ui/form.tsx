@@ -165,6 +165,7 @@ const FormMessage = React.forwardRef<
 FormMessage.displayName = "FormMessage"
 
 export {
+  // eslint-disable-next-line react-refresh/only-export-components -- shadcn 标准结构：useFormField 由 FormField 内部使用并对外导出，拆文件会破坏 FormItem/FormLabel 等对它的依赖
   useFormField,
   Form,
   FormItem,

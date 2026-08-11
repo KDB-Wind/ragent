@@ -24,6 +24,8 @@ module.exports = {
   rules: {
     "react/react-in-jsx-scope": "off",
     "react/prop-types": "off",
-    "react-refresh/only-export-components": "error"
+    // allowConstantExport 放行 cva 变体常量（badge/button）与只读常量导出（AgentModeLabel），
+    // 这是 shadcn/ui 组件结构的官方推荐配置，常量不参与 fast refresh 失效问题。
+    "react-refresh/only-export-components": ["error", { "allowConstantExport": true }]
   }
 };

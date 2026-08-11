@@ -51,4 +51,8 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 );
 Button.displayName = "Button";
 
-export { Button, buttonVariants };
+export {
+  Button,
+  // eslint-disable-next-line react-refresh/only-export-components -- shadcn 标准结构：cva variants 与组件同文件导出，供外部（alert-dialog 等）复用
+  buttonVariants
+};

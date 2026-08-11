@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   ClipboardList,
@@ -242,7 +242,7 @@ export function IngestionPage() {
   const pipelines = pipelinePage?.records || [];
   const tasks = taskPage?.records || [];
 
-  const loadPipelines = async (pageNo = pipelinePageNo, keyword = pipelineKeyword) => {
+  const loadPipelines = useCallback(async (pageNo = pipelinePageNo, keyword = pipelineKeyword) => {
     setPipelineLoading(true);
     try {
       const data = await getIngestionPipelines(pageNo, PIPELINE_PAGE_SIZE, keyword || undefined);
@@ -253,7 +253,7 @@ export function IngestionPage() {
     } finally {
       setPipelineLoading(false);
     }
-  };
+  }, [pipelinePageNo, pipelineKeyword]);
 
   const loadPipelineOptions = async () => {
     try {
@@ -264,7 +264,7 @@ export function IngestionPage() {
     }
   };
 
-  const loadTasks = async (pageNo = taskPageNo, status = taskStatus) => {
+  const loadTasks = useCallback(async (pageNo = taskPageNo, status = taskStatus) => {
     setTaskLoading(true);
     try {
       const data = await getIngestionTasks(pageNo, TASK_PAGE_SIZE, status);
@@ -275,15 +275,15 @@ export function IngestionPage() {
     } finally {
       setTaskLoading(false);
     }
-  };
+  }, [taskPageNo, taskStatus]);
 
   useEffect(() => {
     loadPipelines();
-  }, [pipelinePageNo, pipelineKeyword]);
+  }, [loadPipelines]);
 
   useEffect(() => {
     loadTasks();
-  }, [taskPageNo, taskStatus]);
+  }, [loadTasks]);
 
   useEffect(() => {
     loadPipelineOptions();
@@ -709,7 +709,7 @@ function PipelineDialog({ open, mode, pipeline, onOpenChange, onSubmit }: Pipeli
     }
   });
 
-  const createLocalId = () => `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  const createLocalId = useCallback(() => `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`, []);
 
   const createTask = (type: string) => ({
     id: createLocalId(),
@@ -748,7 +748,7 @@ function PipelineDialog({ open, mode, pipeline, onOpenChange, onSubmit }: Pipeli
     }
   });
 
-  const mapSettingsTasks = (tasks: unknown): EnhancerTaskForm[] => {
+  const mapSettingsTasks = useCallback((tasks: unknown): EnhancerTaskForm[] => {
     if (!Array.isArray(tasks)) return [];
     return tasks.map((task) => ({
       id: createLocalId(),
@@ -756,9 +756,9 @@ function PipelineDialog({ open, mode, pipeline, onOpenChange, onSubmit }: Pipeli
       systemPrompt: String((task as { systemPrompt?: string }).systemPrompt || ""),
       userPromptTemplate: String((task as { userPromptTemplate?: string }).userPromptTemplate || "")
     }));
-  };
+  }, [createLocalId]);
 
-  const buildNodeForm = (node: IngestionPipelineNode): PipelineNodeForm => {
+  const buildNodeForm = useCallback((node: IngestionPipelineNode): PipelineNodeForm => {
     const settings = (node.settings as Record<string, unknown>) || {};
     const rawCondition = node.condition as unknown;
     const condition = rawCondition
@@ -802,14 +802,15 @@ function PipelineDialog({ open, mode, pipeline, onOpenChange, onSubmit }: Pipeli
           : ""
       }
     };
-  };
+  }, [createLocalId, mapSettingsTasks]);
 
-  const buildNodesFromPipeline = (source?: IngestionPipelineNode[] | null) => {
+  const buildNodesFromPipeline = useCallback((source?: IngestionPipelineNode[] | null) => {
     if (!source || source.length === 0) return [];
     return source.map(buildNodeForm);
-  };
+  }, [buildNodeForm]);
 
-  const parseCondition = (raw: string) => {
+  // 条件表达式：JSON 对象/数组原样保留，其余按字符串条件传给后端，故返回 unknown 而非 any
+  const parseCondition = (raw: string): unknown => {
     const trimmed = raw.trim();
     if (!trimmed) return null;
     if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
@@ -938,7 +939,8 @@ function PipelineDialog({ open, mode, pipeline, onOpenChange, onSubmit }: Pipeli
         nodeId,
         nodeType: node.nodeType,
         settings: settings ?? null,
-        condition: condition ?? null,
+        // 条件表达式可能是 JSON 对象/数组或字符串，服务类型定义按对象建模，此处对齐既有契约
+        condition: (condition ?? null) as Record<string, unknown> | null,
         nextNodeId: node.nextNodeId.trim() || null
       });
     }
@@ -992,7 +994,7 @@ function PipelineDialog({ open, mode, pipeline, onOpenChange, onSubmit }: Pipeli
       setNodes(buildNodesFromPipeline(pipeline?.nodes));
       setNodeMode("form");
     }
-  }, [open, pipeline, defaultNodes, form]);
+  }, [open, pipeline, defaultNodes, form, buildNodesFromPipeline]);
 
   const handleSubmit = async (values: PipelineFormValues) => {
     let nodesPayload: IngestionPipelinePayload["nodes"] | undefined;

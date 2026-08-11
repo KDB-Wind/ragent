@@ -229,9 +229,13 @@ export function IntentTreePage() {
     }
   };
 
+  // 树只在挂载时加载一次：loadTree 捕获 focusIntentCode 作为初始聚焦值，
+  // URL 聚焦码后续变化由下方 [focusIntentCode, tree] effect 处理选中；
+  // 把 loadTree 加入依赖会让每次聚焦码变化都重发请求并触发 loading 闪烁
   useEffect(() => {
     loadTree();
     loadKnowledgeBases();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 见上方说明：树不应随 focusIntentCode 重载
   }, []);
 
   useEffect(() => {

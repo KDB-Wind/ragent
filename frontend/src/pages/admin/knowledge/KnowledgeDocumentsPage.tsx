@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Check, ChevronDown, ChevronRight, FileUp, FileImage, Info, PlayCircle, RefreshCw, Trash2, Pencil, FileBarChart, X, Eye, MoreHorizontal, FileText, FileSpreadsheet, Link as LinkIcon, Download } from "lucide-react";
 import { toast } from "sonner";
@@ -37,7 +37,13 @@ import {
 } from "@/services/knowledgeService";
 import { getIngestionPipelines, type IngestionPipeline } from "@/services/ingestionService";
 import { getSystemSettings } from "@/services/settingsService";
-import { DocumentPreview, isDocxType, isImageType, isPreviewableType, isSpreadsheetType } from "@/components/document/DocumentPreview";
+import { DocumentPreview } from "@/components/document/DocumentPreview";
+import {
+  isDocxType,
+  isImageType,
+  isPreviewableType,
+  isSpreadsheetType
+} from "@/components/document/previewUtils";
 import { getErrorMessage } from "@/utils/error";
 
 const PAGE_SIZE = 10;
@@ -455,7 +461,7 @@ export function KnowledgeDocumentsPage() {
     }
   };
 
-  const loadKnowledgeBase = async () => {
+  const loadKnowledgeBase = useCallback(async () => {
     if (!kbId) return;
     try {
       const data = await getKnowledgeBase(kbId);
@@ -464,9 +470,9 @@ export function KnowledgeDocumentsPage() {
       toast.error(getErrorMessage(error, "加载知识库失败"));
       console.error(error);
     }
-  };
+  }, [kbId]);
 
-  const loadDocuments = async (page = current, status = statusFilter, keywordValue = keyword) => {
+  const loadDocuments = useCallback(async (page = current, status = statusFilter, keywordValue = keyword) => {
     if (!kbId) return;
     setLoading(true);
     try {
@@ -483,15 +489,15 @@ export function KnowledgeDocumentsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [kbId, current, statusFilter, keyword]);
 
   useEffect(() => {
     loadKnowledgeBase();
-  }, [kbId]);
+  }, [loadKnowledgeBase]);
 
   useEffect(() => {
     loadDocuments();
-  }, [kbId, current, statusFilter, keyword]);
+  }, [loadDocuments]);
 
   useEffect(() => {
     if (detailTarget) {
@@ -542,7 +548,8 @@ export function KnowledgeDocumentsPage() {
       setDetailNoChunk(false);
       setDetailShowAdvanced(false);
     }
-  }, [detailTarget]);
+    // specSchema 为 state 的稳定引用，仅在 schema 加载完成后变化，加入依赖不会造成循环
+  }, [detailTarget, specSchema]);
 
   const handleSearch = () => {
     setCurrent(1);
@@ -1517,7 +1524,9 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
   const [loadingPipelines, setLoadingPipelines] = useState(false);
   const [maxFileSize, setMaxFileSize] = useState<number>(50 * 1024 * 1024);
 
-  const form = useForm<UploadFormValues>({
+  // schema 的 .default() 使 input 与 output 类型分化（input 中 scheduleEnabled 等可选），
+  // useForm 三泛型与 zodResolver 的 Resolver<z.input, Context, z.output> 签名对齐
+  const form = useForm<z.input<typeof uploadSchema>, unknown, z.output<typeof uploadSchema>>({
     resolver: zodResolver(uploadSchema),
     defaultValues: {
       sourceType: "file",
@@ -1631,11 +1640,11 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
       const payload: KnowledgeDocumentUploadPayload = {
         sourceType: values.sourceType,
         file: values.sourceType === "file" ? file : null,
-        sourceLocation: values.sourceType === "url" ? values.sourceLocation.trim() : null,
+        sourceLocation: values.sourceType === "url" ? (values.sourceLocation || "").trim() : null,
         scheduleEnabled: values.sourceType === "url" ? values.scheduleEnabled : false,
         scheduleCron:
           values.sourceType === "url" && values.scheduleEnabled
-            ? values.scheduleCron.trim()
+            ? (values.scheduleCron || "").trim()
             : null,
         processMode: values.processMode,
         ingestionSpec: ingestionSpec ?? null,
