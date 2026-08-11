@@ -1,0 +1,28 @@
+# Dependency Review 依赖审查
+# 在 PR 上对比依赖清单差异，命中 high 及以上严重级别漏洞即失败（fail-on-severity: high）
+# Maven pom.xml 与 frontend/package-lock.json 由 action 自动发现，无需额外配置
+name: "Dependency Review"
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: "Checkout Repository"
+        uses: actions/checkout@v4
+
+      - name: "Dependency Review"
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
