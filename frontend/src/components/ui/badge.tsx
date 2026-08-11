@@ -38,4 +38,8 @@ function Badge({ className, variant, ...props }: BadgeProps) {
   )
 }
 
-export { Badge, badgeVariants }
+export {
+  Badge,
+  // eslint-disable-next-line react-refresh/only-export-components -- shadcn 标准结构：cva variants 与组件同文件导出，供外部类型推导与复用
+  badgeVariants
+}

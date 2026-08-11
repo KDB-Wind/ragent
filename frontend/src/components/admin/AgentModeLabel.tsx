@@ -1,13 +1,9 @@
 import type { OrchestrationMode } from "@/services/agentProfileService";
+import { OTHER_MODE_LABEL } from "@/components/admin/agentModeLabels";
 
 const MODE_LABEL: Record<OrchestrationMode, string> = {
   WORKFLOW: "WorkFlow",
   AGENT: "Agent"
-};
-
-export const OTHER_MODE_LABEL: Record<OrchestrationMode, string> = {
-  WORKFLOW: "Agent",
-  AGENT: "WorkFlow"
 };
 
 /**

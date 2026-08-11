@@ -77,8 +77,6 @@ jobs:
         run: npm run test
 
       - name: Lint
-        # 仓库既有代码存在 21 个存量 lint error（配置加载原就崩溃，从未跑通过），
-        # 修复属于业务代码改造，列入后续计划；此处先启用 lint 并完整记录结果，
-        # 不阻塞 CI，也不假装 lint 已全绿。
-        continue-on-error: true
+        # 硬门禁：存量 lint 问题已清零（含 0 warnings，--max-warnings 0），
+        # lint 成为与 build/test 同级的前端质量门禁。
         run: npm run lint

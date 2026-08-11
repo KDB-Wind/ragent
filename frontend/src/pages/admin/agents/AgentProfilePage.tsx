@@ -41,8 +41,10 @@ import {
 } from "@/services/agentProfileService";
 import { getErrorMessage } from "@/utils/error";
 import { RelativeTime } from "@/components/RelativeTime";
-import { AGENT_AVATARS, AgentAvatar, randomAvatarKey } from "@/components/admin/AgentAvatar";
-import { AgentModeLabel, OTHER_MODE_LABEL } from "@/components/admin/AgentModeLabel";
+import { AgentAvatar } from "@/components/admin/AgentAvatar";
+import { AGENT_AVATARS, randomAvatarKey } from "@/components/admin/agentAvatarPresets";
+import { AgentModeLabel } from "@/components/admin/AgentModeLabel";
+import { OTHER_MODE_LABEL } from "@/components/admin/agentModeLabels";
 import { cn } from "@/lib/utils";
 
 const emptyForm = { name: "", description: "", avatar: AGENT_AVATARS[0].key };

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { Activity, Clock3, RefreshCw, Search, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
@@ -39,32 +39,37 @@ export function RagTracePage() {
   const [pageData, setPageData] = useState<PageResult<RagTraceRun> | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const runs = pageData?.records || [];
+  // 逻辑表达式（pageData?.records || []）每次渲染都产生新引用，会令下方 useMemo 依赖失效，故用 useMemo 稳定引用
+  const runs = useMemo(() => pageData?.records || [], [pageData]);
 
-  const loadRuns = async (current = pageNo, nextTraceId = queryTraceId) => {
-    const requestId = ++runsRequestRef.current;
-    setLoading(true);
-    try {
-      const result = await getRagTraceRuns({
-        current,
-        size: PAGE_SIZE,
-        traceId: nextTraceId.trim() || undefined
-      });
-      if (runsRequestRef.current !== requestId) return;
-      setPageData(result);
-    } catch (error) {
-      if (runsRequestRef.current !== requestId) return;
-      toast.error(getErrorMessage(error, "加载链路运行列表失败"));
-      console.error(error);
-    } finally {
-      if (runsRequestRef.current !== requestId) return;
-      setLoading(false);
-    }
-  };
+  const loadRuns = useCallback(
+    async (current = pageNo, nextTraceId = queryTraceId) => {
+      const requestId = ++runsRequestRef.current;
+      setLoading(true);
+      try {
+        const result = await getRagTraceRuns({
+          current,
+          size: PAGE_SIZE,
+          traceId: nextTraceId.trim() || undefined
+        });
+        if (runsRequestRef.current !== requestId) return;
+        setPageData(result);
+      } catch (error) {
+        if (runsRequestRef.current !== requestId) return;
+        toast.error(getErrorMessage(error, "加载链路运行列表失败"));
+        console.error(error);
+      } finally {
+        if (runsRequestRef.current === requestId) {
+          setLoading(false);
+        }
+      }
+    },
+    [pageNo, queryTraceId]
+  );
 
   useEffect(() => {
     loadRuns();
-  }, [pageNo, queryTraceId]);
+  }, [loadRuns]);
 
   const handleSearch = () => {
     setPageNo(1);

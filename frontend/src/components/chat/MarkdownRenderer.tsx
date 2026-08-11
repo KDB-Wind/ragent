@@ -1,6 +1,3 @@
-// @ts-nocheck
-/* eslint-disable */
-
 import * as React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -172,6 +169,36 @@ function resolveCitationIndexes(content: string, sources?: SourceRef[]) {
   return [...result];
 }
 
+/**
+ * 图片组件：加载失败时替换为占位提示
+ * <p>
+ * 独立顶层组件（大写命名）以符合 rules-of-hooks：react-markdown components 里的
+ * 小写回调会被当作渲染函数而非组件，useState 将触发 hooks 规则告警
+ */
+function MarkdownImage({ src, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) {
+  const [hasError, setHasError] = React.useState(false);
+
+  if (hasError) {
+    return (
+      <div className="my-3 flex items-center gap-2 text-sm text-[#999999]">
+        <ImageIcon className="h-4 w-4" />
+        <span>图片加载失败</span>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt=""
+      className="my-3 max-w-full rounded-lg"
+      onError={() => setHasError(true)}
+      loading="lazy"
+      {...props}
+    />
+  );
+}
+
 export function MarkdownRenderer({ content, messageId, sources }: MarkdownRendererProps) {
   const theme = useThemeStore((state) => state.theme);
   const citationIndexes = React.useMemo(
@@ -189,13 +216,13 @@ export function MarkdownRenderer({ content, messageId, sources }: MarkdownRender
       ]}
       rehypePlugins={[rehypeRaw, rehypeSanitize]}
       components={{
-        code({ inline, className, children, node, ...props }) {
+        code({ className, children, ...props }) {
           const match = /language-(\w+)/.exec(className || "");
           const language = match?.[1] || "text";
           const value = String(children).replace(/\n$/, "");
 
-          // 判断是否为内联代码：inline 为 true 或者没有换行符
-          if (inline || !value.includes('\n')) {
+          // react-markdown v9 不再提供 inline prop，无语言标注且无换行视为内联代码
+          if (!value.includes('\n')) {
             return (
               <code
                 className={cn(
@@ -239,29 +266,7 @@ export function MarkdownRenderer({ content, messageId, sources }: MarkdownRender
             </div>
           );
         },
-        img({ src, alt, ...props }) {
-          const [hasError, setHasError] = React.useState(false);
-
-          if (hasError) {
-            return (
-              <div className="my-3 flex items-center gap-2 text-sm text-[#999999]">
-                <ImageIcon className="h-4 w-4" />
-                <span>图片加载失败</span>
-              </div>
-            );
-          }
-
-          return (
-            <img
-              src={src}
-              alt=""
-              className="my-3 max-w-full rounded-lg"
-              onError={() => setHasError(true)}
-              loading="lazy"
-              {...props}
-            />
-          );
-        },
+        img: MarkdownImage,
         a({ children, href, ...props }) {
           const citationIndex = messageId ? parseCitationIndex(href) : null;
           if (citationIndex != null) {

@@ -89,6 +89,7 @@ async function readSseStream(response: Response, handlers: StreamHandlers, signa
     dataLines = [];
   };
 
+  // eslint-disable-next-line no-constant-condition -- SSE 读取循环：靠内部 aborted/done 条件 break，没有固定上界
   while (true) {
     if (signal?.aborted) {
       reader.cancel();
