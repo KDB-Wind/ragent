@@ -4,20 +4,16 @@
 
 ## 1. 推荐执行顺序
 
-1. 增加第二位可信 Reviewer/CODEOWNER。
-2. 验证第二位 Reviewer 能完成 CODEOWNERS approval。
-3. 移除 `@KDB-Wind` 的个人 `pull_request` bypass。
-4. 将 Dependency Review 和 CodeQL 安全策略提升为合并门禁。
-5. 处理 Critical/High 安全告警，再启用相应 Code Scanning 阻断阈值。
-6. 在隔离的真实依赖环境运行集成测试。
-7. 在 staging 完成生产凭据守卫的正向、负向和混合 profile 验收。
-8. 执行 API key 轮换和数据库升级等部署侧操作。
+1. 在 PR #9 合并后复核默认分支 CodeQL/Dependabot 存量告警。
+2. 在隔离的真实依赖环境运行集成测试。
+3. 在 staging 完成生产凭据守卫的正向、负向和混合 profile 验收。
+4. 执行 API key 轮换和数据库升级等部署侧操作。
 
-不要在只有一名有效 Reviewer 时先移除个人 bypass。当前直接协作者和默认 CODEOWNER 只有 `KDB-Wind`；直接移除 bypass 后，`1 approve + CODEOWNERS review` 可能使仓库无人能够批准作者自己的 PR。
+2026-08-12 已完成的 GitHub 端操作：`main-protection` 已移除所有 bypass actor，保留必须通过 PR 合入，并将后端、前端、Dependency Review 及 CodeQL 双语言 job 设为 strict required checks。
 
 ## 2. 增加独立 Reviewer
 
-责任人：Repo Admin。
+当前决策：个人项目暂不增加第二位 Reviewer，该项为未来协作扩展选项，不是当前闭合前置条件。
 
 1. 进入 `Settings → Collaborators and teams → Add people`。
 2. 添加至少一名可信 Reviewer，授予 `Write` 或 `Maintain` 权限。
@@ -32,24 +28,22 @@
 
 完成证据：协作者页面截图或 API 输出、CODEOWNERS PR、有效 approval 记录。
 
-如果项目保持单人维护，则无法同时满足“独立审批”和“无个人 bypass”。应书面接受该风险，并保持 `ci-branch-gate-missing` 为 Partial，不得标记 Closed。
+未来增加可信维护者后，再按上述步骤开启 `1 approval + CODEOWNERS review`。AI review 只是建议层，不冒充独立人工 approval。
 
 ## 3. 收紧 main ruleset
 
 责任人：Repo Admin。
 
-当前 ruleset：`main-protection`，id `20637126`；当前个人 bypass 为 `@KDB-Wind / pull_request`。
+当前 ruleset：`main-protection`，id `20637126`；已验证 active 且 bypass list 为空。
 
 1. 进入 `Settings → Rules → Rulesets → main-protection → Edit`。
-2. 在 `Bypass list` 中移除个人 bypass。
+2. 确认 `Bypass list` 保持为空。
 3. 保持以下设置：
    - target 为 `refs/heads/main`；
    - ruleset 为 Active；
    - 禁止 deletion 和 non-fast-forward；
    - 只允许通过 PR 合并；
-   - 至少 1 个 approval；
-   - required CODEOWNERS review；
-   - push 后撤销旧 approval；
+   - 单人维护期间 approval count 为 0，不要求 CODEOWNERS review；
    - strict required status checks。
 4. 保存后创建测试 PR，确认未审批时不能合并、审批后仍必须等待全部 required checks。
 
@@ -94,7 +88,7 @@
 
 按 Critical → High → Medium → Low/未分级处理；优先生产运行时直接依赖和外部可达的数据流。每个告警通过独立 PR 修复并关联告警编号。只有确认是误报、不可达路径或明确接受风险时才 dismiss，必须填写技术理由，不以“清零数字”为目的批量 dismiss。
 
-仓库内已修复当前 5 个 Critical SSRF、1 个 High 鉴权绕过和 1 个 High 前端不完整转义，并增加定向回归测试；前端本地 npm audit 已无 Critical/High。管理员仍须触发 CodeQL/Dependabot 重新扫描，逐条确认告警确实关闭且没有新变体；扫描完成前保持“未验证”，不要手工批量 dismiss。
+仓库内已修复当前 5 个 Critical SSRF、1 个 High 鉴权绕过和 1 个 High 前端不完整转义，并增加定向回归测试；前端本地 npm audit 已无 Critical/High。PR #9 的 CodeQL 重扫已通过且无本 PR 新增告警；默认分支存量 CodeQL/Dependabot 告警仍需在合并后按最新 API 快照逐条 triage，不要为清零数字批量 dismiss。
 
 完成证据：修复 PR、重新扫描结果、关闭或带理由 dismiss 的告警记录。
 
@@ -141,7 +135,7 @@
 
 | Finding | 外部闭合条件 |
 |---|---|
-| `ci-branch-gate-missing` | 第二 Reviewer 生效；个人 bypass 移除/重新设计；测试 PR 证明审批与 checks 均不可绕过 |
+| `ci-branch-gate-missing` | 已闭合：active ruleset 无 bypass，必须 PR，五个 strict required checks 已由 PR #9 验证 |
 | `integration-isolation-gap` | 隔离环境连续两次真实集成测试通过，且清理 postcondition 有证据 |
 | `dependency-supply-chain-gap` | Dependency Review required；Code Scanning merge protection 生效；Critical/High 存量完成修复或有依据的判定 |
 | `production-default-credential-boundary` | 代码层已闭合；staging 正/负/混合 profile 验收作为发布接受证据 |

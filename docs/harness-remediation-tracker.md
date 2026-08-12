@@ -14,7 +14,7 @@
 
 | Finding | 严重度 | 状态 | 闭合依据 |
 |---|---|---|---|
-| `ci-branch-gate-missing` 合并前无强制 CI 与 main 保护 | High | ⏳ Partial | CI 与 active main ruleset 已验证；个人 `pull_request` bypass 仍可绕过审批边界，移除前不闭合 |
+| `ci-branch-gate-missing` 合并前无强制 CI 与 main 保护 | High | ✅ Closed | active main ruleset 无 bypass，只允许 PR，五个 strict required checks 已用 PR #9 验证 |
 | `frontend-validation-gap` 前端无行为级验证 | Medium | ✅ Closed | Vitest/RTL 18 用例 + coverage ratchet；lint 46→0 并改为 CI 硬门禁 |
 | `production-default-credential-boundary` 默认凭据未隔离 | Medium | ✅ Closed | `ProductionCredentialGuard` 使用实际 active profiles、空值 fail-fast、S3/OSS 条件检查 + 15 单测（含真实 Spring 启动负例） |
 | `integration-isolation-gap` 集成测试无隔离回收 | Medium | ⏳ Partial | opt-in + Milvus 唯一资源/精确清理/postcondition 已实现；真实外部环境运行待验证 |
@@ -40,12 +40,12 @@
 
 ### 3.1 外部复核与 P1 跟进（2026-08-11）
 
-- ruleset `main-protection`（id `20637126`）已确认为 active、覆盖 `refs/heads/main`、strict required checks 为 `backend-maven` / `frontend-build-lint`；HEAD `abcde43` 两项均成功。
-- ruleset 对 `@KDB-Wind` 保留 `pull_request` bypass；PR #8 无 review 仍完成合并，因此审批边界可绕过，`ci-branch-gate-missing` 暂不闭合。
-- CodeQL 与 Dependency Review workflow 已运行，但不在 required status checks 内，且没有 `required_code_scanning`；当前只作为扫描信号。
+- ruleset `main-protection`（id `20637126`）已确认 active、覆盖 `refs/heads/main`、无 bypass actor，且只允许 PR 合入。
+- 单人维护模式下 approval/CODEOWNERS approval 设为 0/false；这是明确的可用性取舍，AI review 不伪装为独立人工 approval。
+- strict required checks 已扩展为 `backend-maven`、`frontend-build-lint`、`dependency-review`、`Analyze (java-kotlin)` 和 `Analyze (javascript-typescript)`；PR #9 五项及 CodeQL 聚合结果全绿。
 - 生产凭据守卫已补 active profile、混合 profile、空值、S3/OSS 条件检查和真实 Spring 启动负例，测试扩展为 15 个。
 - Milvus 写入测试已使用唯一主键/collection，并在 `finally` 精确清理和验证 postcondition；待专用集成环境执行。
-- 7 个 Critical/High CodeQL 对应代码路径已修复并增加回归测试；GitHub 重新扫描状态不得在本地假定为闭合。
+- PR #9 已完成 GitHub CodeQL 重扫，本 PR 的 3 个 SSRF 变体已清零，聚合检查通过；默认分支的存量计数需等合并后再刷新。
 - 前端 `npm audit --audit-level=high` 已无 Critical/High；GitHub Dependabot 告警变化待重新扫描。
 - 完整审核和修复证据见 `docs/governance-remediation-review-20260811.md`。
 
@@ -53,18 +53,19 @@
 
 ### 4.1 需人工/外部操作（不阻塞开发）
 
-详细步骤、责任人、顺序和完成证据见 `docs/external-governance-operations.md`。特别注意：当前只有一名有效 Reviewer，必须先增加第二 Reviewer/CODEOWNER，再移除个人 bypass。
+详细步骤、责任人、顺序和完成证据见 `docs/external-governance-operations.md`。第二位 Reviewer 对当前个人项目不再是前置条件；无 bypass 的 CI 门禁已落地。
 
 - [ ] **轮换 mygpt API key**：曾明文存于 opencode 配置（已迁移 auth.json；fork/上游全历史扫描零泄露），供应商侧轮换一次收尾
 - [ ] **执行 v1.1.0 SQL 升级**：本地与部署库均需执行（先备份，按 `docs/v1.1.0-upgrade-guide.md`）
 - [ ] **消化 Dependabot 漏洞告警**：2026-08-11 API 快照为 58 个 open（1 critical / 23 high / 32 medium / 2 low）；按 critical→high 优先处理，数量变化时以新 API 快照为准
 - [ ] **消化 CodeQL 告警**：2026-08-11 API 快照为 104 个 open（security severity：5 critical / 2 high / 65 medium / 32 未分级），先完成 triage、去重与误报处置，再确定阻断阈值
-- [ ] **收紧 main bypass**：先增加第二位有效 reviewer/CODEOWNER，再移除个人 `pull_request` bypass；该操作需 Repo Admin 单独授权
+- [x] **收紧 main bypass**：个人 bypass 已移除；单人维护模式下不强制 approval
 - [ ] **定期上游同步**（建议月例行）：按 `docs/upstream-sync.md` SOP
 
 ### 4.2 P2 第二批（供应链收尾）
 
-- [ ] 将 `dependency-review` 提升为 required status check；为 CodeQL 配置 `required_code_scanning`/merge protection（需 Repo Admin 授权）
+- [x] 将 `dependency-review` 和 CodeQL 双语言 job 提升为 strict required checks
+- [ ] 若当前 GitHub 套餐/UI 支持，再配置 `required_code_scanning` 严重度阈值；否则保留双语言 required jobs + 人工告警 triage
 - [x] SCA 独立扫描：weekly/manual/release-tag Trivy SBOM scan，双端独立 SARIF；存量 signal-only
 - [x] SBOM 生成：CycloneDX Maven 插件 + 前端 `@cyclonedx/cyclonedx-npm`，随 workflow artifact 保存
 - [ ] 镜像漏洞扫描（Docker 建立后随镜像管道；Trivy action）
@@ -76,7 +77,7 @@
 - [ ] 可观测性：结构化日志、metrics（模型首包/检索通道/降级次数/SSE 断开原因）、OpenTelemetry tracing、health/liveness、Trace ID 跨前后端
 - [ ] release 流程：SemVer/changelog/GitHub Release/制品 checksum
 - [ ] Docker/部署 ADR：环境分层、DB migration、备份恢复、RTO/RPO
-- [ ] Actions 升级：setup-java/setup-node v4→v5（当前有 Node 20 runtime deprecation 提示）
+- [x] Actions 升级：checkout v7、setup-java v5、CodeQL Action v4（全部固定完整 SHA）
 
 ### 4.4 61–90 天
 

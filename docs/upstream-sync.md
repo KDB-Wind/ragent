@@ -112,7 +112,7 @@ PR 正文必含：同步范围、冲突处理摘要（含临时文件清理说�
 
 ### 6. 合入
 
-等待 `backend-maven` 与 `frontend-build-lint` 两个 job 全绿，经 approve 后由 GitHub merge 合入。CodeQL 与 Dependency Review workflow 也应成功运行；但它们是否属于 required check、CodeQL 告警是否阻断合并，必须通过 GitHub ruleset/API 复核，未验证前不得宣称其为合并门禁。失败按第 2/4 步规则修复后重新 push。
+等待 ruleset 中五个 strict required jobs 全绿：`backend-maven`、`frontend-build-lint`、`dependency-review`、`Analyze (java-kotlin)` 和 `Analyze (javascript-typescript)`。当前单人维护模式不强制 approval；合并由维护者手动确认，高风险同步 PR 应先触发 AI 建议层审查。失败按第 2/4 步规则修复后重新 push。
 
 ## v1.1.0 SQL 升级提示
 

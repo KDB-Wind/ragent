@@ -1,5 +1,7 @@
 # Fork 治理改造审核与 P1 修复记录（2026-08-11）
 
+> 2026-08-12 后续：本文为 2026-08-11 的时点审核。此后 `main-protection` 已移除个人 bypass，改为单人维护模式（无强制 approval），并将 Dependency Review 与 CodeQL 双语言 job 纳入 strict required checks。PR #9 的全部门禁与 CodeQL 聚合结果已通过。当前状态以 `docs/harness-remediation-tracker.md` 为准。
+
 ## 1. 结论
 
 初审结论为 **BLOCKED**：仓库内 CI、前端测试与供应链 workflow 的方向正确，本地门禁通过，但 remediation tracker 对部分 finding 的 `Closed` 声明超过了证据边界。阻断点不是 P0 漏洞，而是生产凭据守卫、集成测试隔离及 GitHub 强制策略仍存在未闭合或未验证边界。

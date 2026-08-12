@@ -103,8 +103,8 @@ gh pr create --base main --head "sync/upstream-$sync_date" --title "chore: sync 
 
 - `backend-maven`：`spotless:check` 与 `./mvnw -B -ntp verify` 必须通过（verify 包含默认单元测试集合；依赖外部服务的集成测试已用 `@Tag("integration")` 隔离，通过 `-P integration` 显式运行）
 - `frontend-build-lint`：`npm run lint`、`npm run test:coverage` 与 `npm run build` 均为硬门禁；当前 lint 基线为 0 error / 0 warning
-- 仓库中已定义 main ruleset 所需的 CI job；ruleset 是否处于 active、required check context 是否精确匹配、bypass 边界是否安全，必须通过 GitHub API 或仓库设置页另行复核，不以仓库文件推定
-- CodeQL 与 Dependency Review workflow 已纳入仓库；它们是否被 ruleset 配置为 required、CodeQL 告警是否阻断合并，属于 GitHub 端配置，未取得接口证据前均记为“未验证”
+- 2026-08-12 已通过 GitHub API 验证 `main-protection` active：无 bypass actor，只允许 PR 合入，strict required checks 为 `backend-maven` / `frontend-build-lint` / `dependency-review` / `Analyze (java-kotlin)` / `Analyze (javascript-typescript)`。
+- 本项目是单人维护 fork，ruleset 不要求 approval 或 CODEOWNERS approval；AI review 是建议层，不是 approval，也无法合并 PR。若未来增加第二位维护者，再将独立人工 approval 设为必需。
 
 ## Code Review Rules
 

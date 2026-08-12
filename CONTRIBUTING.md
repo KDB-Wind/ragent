@@ -3,7 +3,7 @@
 ## 分支规范
 
 - 功能开发：`feature/<描述>`；缺陷修复：`fix/<描述>`；重构/清理：`chore/<描述>`；自动化相关：`harness/<描述>`。
-- 治理约定要求一律通过 PR 合入 `main`，禁止直接 push main；ruleset 是否 active、是否确实拒绝直推需从 GitHub 端复核。
+- 治理约定要求一律通过 PR 合入 `main`，禁止直接 push main；2026-08-12 已通过 GitHub API 验证 ruleset active 且无 bypass actor。
 - PR 标题使用 conventional commits 风格（如 `fix(rag): ...`、`feat(frontend): ...`、`ci: ...`）。
 
 ## 本地开发
@@ -47,6 +47,6 @@ npm run build
 ## Review 流程
 
 1. 提交 PR 后，GitHub Actions 自动运行 `backend-maven` 与 `frontend-build-lint`；CodeQL 与 Dependency Review 按各自 workflow 的触发条件运行。
-2. 合并前确认仓库设置中的 main ruleset 处于 active，required check context 与实际 job 名精确匹配，并满足 approve 与 CODEOWNERS 审查要求。供应链 workflow 是否 required、CodeQL 告警是否阻断合并不能从仓库文件确认，未取得 GitHub 端证据时视为“未验证”。
+2. 合并前等待 ruleset 中五个 required checks 全绿。当前是单人维护模式，不强制 approval；高风险 PR 应手动请求 DeepSeek/Codex 建议层审查，维护者仍对最终合并负责。
 3. 合并使用 GitHub 的 merge（不要 rebase 直推绕过规则）。
 4. 模块 owner 见 `.github/CODEOWNERS`。
