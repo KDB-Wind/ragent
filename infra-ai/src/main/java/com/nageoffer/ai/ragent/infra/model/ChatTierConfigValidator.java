@@ -72,8 +72,11 @@ public class ChatTierConfigValidator implements InitializingBean {
             throw new IllegalStateException("chat 档位配置校验失败:\n - " + String.join("\n - ", errors));
         }
 
-        warnDeepThinkingSupport(group, tiers, registry);
-        log.info("chat 档位配置校验通过: tiers={}", tiers.keySet());
+        // A missing/empty map always contributes an error above, so successful validation guarantees
+        // a usable map. Keep that invariant explicit for readers and static analysis.
+        Map<String, AIModelProperties.TierConfig> validatedTiers = Objects.requireNonNull(tiers);
+        warnDeepThinkingSupport(group, validatedTiers, registry);
+        log.info("chat 档位配置校验通过: tiers={}", validatedTiers.keySet());
     }
 
     /**

@@ -172,9 +172,7 @@ public class JdbcConversationMemorySummaryService implements ConversationMemoryS
         } catch (Exception e) {
             log.error("摘要失败 - conversationId：{}，userId：{}", conversationId, userId, e);
         } finally {
-            if (lock.isHeldByCurrentThread()) {
-                lock.unlock();
-            }
+            lock.unlock();
         }
     }
 

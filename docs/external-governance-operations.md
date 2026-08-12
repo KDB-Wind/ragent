@@ -90,6 +90,15 @@
 
 仓库内已修复当前 5 个 Critical SSRF、1 个 High 鉴权绕过和 1 个 High 前端不完整转义，并增加定向回归测试；前端本地 npm audit 已无 Critical/High。PR #9 的 CodeQL 重扫已通过且无本 PR 新增告警；默认分支存量 CodeQL/Dependabot 告警仍需在合并后按最新 API 快照逐条 triage，不要为清零数字批量 dismiss。
 
+2026-08-13 PR #11 合并后复核（必须使用 `--paginate`，GitHub API 默认只返回首 30 条）：
+
+- main 的 CI 与 CodeQL `java-kotlin` / `javascript-typescript` job 均成功。
+- Code scanning：99 open（2 Critical SSRF / 65 Medium / 32 未分级）。其中 61 条 Medium 为 log injection、4 条为锁释放；扫描成功不等于这些告警关闭。
+- Dependabot：4 open，均为 Medium（React Router 3 条、PrismJS 1 条）；修复分支已完成依赖升级且本地 build、18 tests、lint、npm audit 全绿，待 PR 扫描验证。
+- Secret scanning：0 open；push protection 已启用。
+
+本轮不直接 dismiss 2 条 SSRF：代码已把 base URL 限定为管理员配置、请求 path 为常量、用户输入只进入 query builder，并有 authority 回归测试，但 GitHub 告警仍为 open。应以修复分支 CodeQL 结果为准；若查询仍无法识别该信任边界，再逐条记录不可达性/信任边界理由后由管理员决定是否 dismiss。
+
 完成证据：修复 PR、重新扫描结果、关闭或带理由 dismiss 的告警记录。
 
 ## 6. 真实集成测试验收

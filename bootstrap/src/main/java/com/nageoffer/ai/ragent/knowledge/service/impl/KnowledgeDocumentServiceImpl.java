@@ -468,6 +468,9 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             condition = BizChangeLogContext.RECORD_CONDITION
     )
     public void update(String docId, KnowledgeDocumentUpdateRequest requestParam) {
+        if (requestParam == null) {
+            throw new ClientException("文档更新参数不能为空");
+        }
         KnowledgeDocumentDO documentDO = documentMapper.selectById(docId);
         Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
         bizChangeLogContext.putName(documentDO.getDocName());
@@ -478,7 +481,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             throw new ClientException("文档正在分块中，无法修改");
         }
 
-        String docName = requestParam == null ? null : requestParam.getDocName();
+        String docName = requestParam.getDocName();
         if (!StringUtils.hasText(docName)) {
             throw new ClientException("文档名称不能为空");
         }

@@ -86,9 +86,7 @@ public class VectorSpaceInitializer {
                     .build());
             log.info("向量共享空间创建成功 collection={}", collectionName);
         } finally {
-            if (lock.isHeldByCurrentThread()) {
-                lock.unlock();
-            }
+            lock.unlock();
         }
     }
 }
