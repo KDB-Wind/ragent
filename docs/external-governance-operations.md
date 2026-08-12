@@ -94,10 +94,12 @@
 
 - main 的 CI 与 CodeQL `java-kotlin` / `javascript-typescript` job 均成功。
 - Code scanning：99 open（2 Critical SSRF / 65 Medium / 32 未分级）。其中 61 条 Medium 为 log injection、4 条为锁释放；扫描成功不等于这些告警关闭。
-- Dependabot：4 open，均为 Medium（React Router 3 条、PrismJS 1 条）；修复分支已完成依赖升级且本地 build、18 tests、lint、npm audit 全绿，待 PR 扫描验证。
+- Dependabot：4 open，均为 Medium（React Router 3 条、PrismJS 1 条）；Draft PR #12 已完成依赖升级，本地 build、18 tests、lint、npm audit 全绿，Dependency Review 通过；默认分支告警需合并后确认关闭。
 - Secret scanning：0 open；push protection 已启用。
 
 本轮不直接 dismiss 2 条 SSRF：代码已把 base URL 限定为管理员配置、请求 path 为常量、用户输入只进入 query builder，并有 authority 回归测试，但 GitHub 告警仍为 open。应以修复分支 CodeQL 结果为准；若查询仍无法识别该信任边界，再逐条记录不可达性/信任边界理由后由管理员决定是否 dismiss。
+
+Draft PR #12 的五个 required checks 及 CodeQL 聚合检查均已通过，PR ref 未产生 open CodeQL 告警。该结果证明本 PR 未引入新告警，但不能提前代替合并后的默认分支告警关闭复核。
 
 完成证据：修复 PR、重新扫描结果、关闭或带理由 dismiss 的告警记录。
 

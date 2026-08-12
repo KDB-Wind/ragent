@@ -58,8 +58,8 @@
 
 - [ ] **轮换 mygpt API key**：曾明文存于 opencode 配置（已迁移 auth.json；fork/上游全历史扫描零泄露），供应商侧轮换一次收尾
 - [ ] **执行 v1.1.0 SQL 升级**：本地与部署库均需执行（先备份，按 `docs/v1.1.0-upgrade-guide.md`）
-- [ ] **消化 Dependabot 漏洞告警**：2026-08-13 分页 API 快照为 4 个 Medium；当前修复分支已升级 React Router 与 PrismJS 依赖，待 PR 扫描确认关闭
-- [ ] **消化 CodeQL 告警**：2026-08-13 分页 API 快照为 99 个 open（2 Critical SSRF / 65 Medium / 32 未分级）；当前修复分支优先处理 4 个锁释放和 4 个空指针路径，2 个 SSRF 已有固定配置边界与回归测试但仍需 CodeQL 重新判定或逐条技术处置
+- [ ] **消化 Dependabot 漏洞告警**：2026-08-13 分页 API 快照为 4 个 Medium；Draft PR #12 已升级 React Router 与 PrismJS 依赖，Dependency Review 全绿，本地 `npm audit` 为 0；默认分支告警需合并后确认关闭
+- [ ] **消化 CodeQL 告警**：2026-08-13 分页 API 快照为 99 个 open（2 Critical SSRF / 65 Medium / 32 未分级）；Draft PR #12 已处理 4 个锁释放和 4 个空指针路径，CodeQL 双语言全绿且 PR 级新增告警为 0；存量告警是否关闭需合并后复核
 - [x] **收紧 main bypass**：个人 bypass 已移除；单人维护模式下不强制 approval
 - [ ] **定期上游同步**（建议月例行）：按 `docs/upstream-sync.md` SOP
 
