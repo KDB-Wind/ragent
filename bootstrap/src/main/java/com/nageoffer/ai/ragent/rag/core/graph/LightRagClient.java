@@ -319,13 +319,21 @@ public class LightRagClient {
             throw new IllegalArgumentException("LightRAG base URL 必须是不含凭据、query 和 fragment 的 HTTP(S) 地址");
         }
         URI canonicalUri = URI.create(candidate.toString());
-        if (canonicalUri.getHost() == null || !canonicalUri.getHost().equals(candidate.host())) {
+        String uriHost = canonicalUri.getHost();
+        if (uriHost != null && uriHost.startsWith("[") && uriHost.endsWith("]")) {
+            uriHost = uriHost.substring(1, uriHost.length() - 1);
+        }
+        if (uriHost == null || !uriHost.equals(candidate.host())) {
             throw new IllegalArgumentException("LightRAG base URL 主机格式不安全");
         }
         HttpUrl safeUrl = HttpUrl.parse(canonicalUri.toASCIIString());
         if (safeUrl == null) {
             throw new IllegalArgumentException("LightRAG base URL 格式不安全");
         }
+        // baseUrl is administrator-controlled service configuration. Runtime safety also relies on
+        // every request path being a compile-time constant and user input entering only through
+        // HttpUrl.Builder query parameters. This parser check prevents URI/OkHttp authority ambiguity;
+        // it is not an allowlist for private service addresses because local LightRAG is supported.
         String path = safeUrl.encodedPath();
         return safeUrl.newBuilder().encodedPath(path.endsWith("/") ? path : path + "/").build();
     }
