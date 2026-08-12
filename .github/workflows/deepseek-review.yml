@@ -37,9 +37,11 @@ jobs:
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENCODE_PERMISSION: '{"bash":"deny","edit":"deny","write":"deny"}'
+          # Prevent the cheap first-layer reviewer from delegating to a differently priced model.
+          OPENCODE_PERMISSION: '{"bash":"deny","edit":"deny","write":"deny","task":"deny","webfetch":"deny"}'
         with:
           model: opencode-go/deepseek-v4-flash
+          agent: build
           variant: max
           share: false
           use_github_token: true
@@ -53,4 +55,4 @@ jobs:
             并发、配置门禁和测试缺口。不要报告纯风格问题。没有实质问题时明确写“未发现阻塞问题”。
 
             这是自动化辅助审查，只能发布 COMMENTED 类型反馈，不构成 APPROVED，不能修改代码、
-            推送分支、启用自动合并或合并 PR。输出使用中文，保持简洁。
+            推送分支、启用自动合并或合并 PR，也不得委派给其他 agent/模型。输出使用中文，保持简洁。

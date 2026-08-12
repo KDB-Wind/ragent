@@ -22,6 +22,7 @@
 
 仓库管理员需要在 **Settings → Secrets and variables → Actions** 配置
 `OPENCODE_API_KEY`。密钥不得写入 workflow、PR、日志或仓库文件。自动触发未启用，以控制额度并避免外部用户滥用。
+工作流同时禁用 `task`（子 agent 委派）和 `webfetch`，防止第一层审查隐式切换到其他付费模型或访问外部网络。
 
 ## 第二层：官方 Codex
 
