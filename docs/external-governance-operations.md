@@ -150,3 +150,19 @@ Draft PR #12 的五个 required checks 及 CodeQL 聚合检查均已通过，PR 
 | `integration-isolation-gap` | 隔离环境连续两次真实集成测试通过，且清理 postcondition 有证据 |
 | `dependency-supply-chain-gap` | Dependency Review required；Code Scanning merge protection 生效；Critical/High 存量完成修复或有依据的判定 |
 | `production-default-credential-boundary` | 代码层已闭合；staging 正/负/混合 profile 验收作为发布接受证据 |
+
+## 10. 维护者下次操作清单（PR #12）
+
+以下事项留给维护者在 2026-08-13 白天执行；代理不得代替触发审查、转为 Ready 或合并：
+
+1. 打开 Draft PR #12：<https://github.com/KDB-Wind/ragent/pull/12>，先确认最终 SHA 的 required checks 仍全部为绿色。
+2. 按额度与审查深度选择手动触发：
+   - 日常第一层：评论 `/deepseek-review`；
+   - Codex 复核：评论 `@codex review`。
+   不需要同时触发；AI Review 仅提供建议，不构成独立人工 approval，也不能合并 PR。
+3. 阅读审查结论；如有 actionable comment，先修复并等待新一轮 required checks。对已处理的线程可点击 `Resolve conversation`。
+4. 确认无阻塞项后点击 `Ready for review`，再次确认 PR 可合并，再由维护者决定是否合并。不要启用自动合并。
+5. 合并后让代理复核 main：CI/CodeQL 双语言结果、Dependabot 4 个 Medium 是否关闭、CodeQL 存量数量与规则分布，并把真实结果更新回本文件。
+6. 需要 Better Harness 复评时，在新的对话指令中显式发送 `/better-harness`；普通文字提及“复评”不会触发该技能。复评报告完成后再对照 7 个 findings 更新闭合判定。
+
+与 PR #12 无关、仍需维护者或部署负责人亲自完成的事项：mygpt API key 供应商侧轮换、v1.1.0 真实数据库备份与升级、隔离集成环境/Secrets 准备、staging/production 验收与最终风险接受。
