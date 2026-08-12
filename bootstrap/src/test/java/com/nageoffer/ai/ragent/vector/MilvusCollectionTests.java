@@ -22,6 +22,7 @@ import io.milvus.v2.common.ConsistencyLevel;
 import io.milvus.v2.common.DataType;
 import io.milvus.v2.common.IndexParam;
 import io.milvus.v2.service.collection.request.CreateCollectionReq;
+import io.milvus.v2.service.collection.request.DropCollectionReq;
 import io.milvus.v2.service.collection.request.HasCollectionReq;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +34,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Slf4j
 @SpringBootTest
@@ -42,18 +47,12 @@ public class MilvusCollectionTests {
 
     private final MilvusClientV2 milvusClient;
 
-    private static final String COLLECTION_NAME = "test_collection";
+    private static final String COLLECTION_NAME_PREFIX = "test_collection_";
     private static final int EMBEDDING_DIM = 4096;
 
     @Test
     public void createCollection() {
-        boolean exists = Boolean.TRUE.equals(milvusClient.hasCollection(
-                HasCollectionReq.builder().collectionName(COLLECTION_NAME).build()
-        ));
-        if (exists) {
-            log.info("Collection already exists.");
-            return;
-        }
+        String collectionName = COLLECTION_NAME_PREFIX + UUID.randomUUID().toString().replace("-", "");
 
         List<CreateCollectionReq.FieldSchema> fieldSchemaList = new ArrayList<>();
 
@@ -108,7 +107,7 @@ public class MilvusCollectionTests {
                 .build();
 
         CreateCollectionReq createReq = CreateCollectionReq.builder()
-                .collectionName(COLLECTION_NAME)
+                .collectionName(collectionName)
                 .collectionSchema(collectionSchema)
                 .primaryFieldName("doc_id")
                 .vectorFieldName("embedding")
@@ -117,6 +116,22 @@ public class MilvusCollectionTests {
                 .description("Ragent 知识库向量集合")
                 .build();
 
-        milvusClient.createCollection(createReq);
+        try {
+            milvusClient.createCollection(createReq);
+            assertTrue(hasCollection(collectionName), "本次测试创建的 collection 应当存在");
+        } finally {
+            if (hasCollection(collectionName)) {
+                milvusClient.dropCollection(DropCollectionReq.builder()
+                        .collectionName(collectionName)
+                        .build());
+            }
+            assertFalse(hasCollection(collectionName), "本次测试创建的 collection 必须被清理");
+        }
+    }
+
+    private boolean hasCollection(String collectionName) {
+        return Boolean.TRUE.equals(milvusClient.hasCollection(
+                HasCollectionReq.builder().collectionName(collectionName).build()
+        ));
     }
 }

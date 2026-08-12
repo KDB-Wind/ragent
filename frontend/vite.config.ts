@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src")
+      "@": path.resolve(import.meta.dirname, "./src")
     }
   },
   server: {
@@ -24,6 +24,19 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: "./src/test/setupTests.ts",
     globals: false,
-    css: false
+    css: false,
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json-summary", "html"],
+      reportsDirectory: "coverage",
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/**/*.test.{ts,tsx}", "src/**/__tests__/**", "src/test/**", "src/types/**"],
+      thresholds: {
+        statements: 2.8,
+        branches: 1.9,
+        functions: 1.7,
+        lines: 2.9
+      }
+    }
   }
 });

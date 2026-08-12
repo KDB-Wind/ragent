@@ -18,7 +18,8 @@
 package com.nageoffer.ai.ragent.ingestion.util;
 
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
-import lombok.RequiredArgsConstructor;
+import okhttp3.Dns;
+import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -37,11 +38,26 @@ import java.util.Map;
  * HTTP 请求工具类，用于获取网络资源
  */
 @Component
-@RequiredArgsConstructor
 public class HttpClientHelper {
 
-    @Qualifier("syncHttpClient")
     private final OkHttpClient client;
+    private final RemoteUrlPolicy remoteUrlPolicy;
+
+    public HttpClientHelper(@Qualifier("syncHttpClient") OkHttpClient client, RemoteUrlPolicy remoteUrlPolicy) {
+        this.remoteUrlPolicy = remoteUrlPolicy;
+        Dns delegateDns = client.dns();
+        this.client = client.newBuilder()
+                .dns(hostname -> {
+                    var addresses = delegateDns.lookup(hostname);
+                    remoteUrlPolicy.validateResolvedHost(hostname, addresses);
+                    return addresses;
+                })
+                .addNetworkInterceptor(chain -> {
+                    remoteUrlPolicy.validateForRequest(chain.request().url());
+                    return chain.proceed(chain.request());
+                })
+                .build();
+    }
 
     public HttpFetchResponse get(String url, Map<String, String> headers) {
         return doGet(url, headers, -1);
@@ -52,16 +68,16 @@ public class HttpClientHelper {
     }
 
     public HttpFetchStream openStream(String url, Map<String, String> headers, long maxBytes) {
-        Request.Builder builder = new Request.Builder().url(url);
+        HttpUrl safeUrl = remoteUrlPolicy.parseAndValidate(url);
+        Request.Builder builder = new Request.Builder().url(safeUrl);
         if (headers != null) {
             headers.forEach(builder::addHeader);
         }
         try {
             Response response = client.newCall(builder.get().build()).execute();
             if (!response.isSuccessful()) {
-                String body = response.body() != null ? response.body().string() : "";
                 response.close();
-                throw new ServiceException("网络请求失败: " + response.code() + " " + body);
+                throw new ServiceException("网络请求失败: HTTP " + response.code());
             }
             ResponseBody responseBody = response.body();
             String contentType = response.header("Content-Type");
@@ -84,14 +100,14 @@ public class HttpClientHelper {
     }
 
     private HttpFetchResponse doGet(String url, Map<String, String> headers, long maxBytes) {
-        Request.Builder builder = new Request.Builder().url(url);
+        HttpUrl safeUrl = remoteUrlPolicy.parseAndValidate(url);
+        Request.Builder builder = new Request.Builder().url(safeUrl);
         if (headers != null) {
             headers.forEach(builder::addHeader);
         }
         try (Response response = client.newCall(builder.get().build()).execute()) {
             if (!response.isSuccessful()) {
-                String body = response.body() != null ? response.body().string() : "";
-                throw new ServiceException("网络请求失败: " + response.code() + " " + body);
+                throw new ServiceException("网络请求失败: HTTP " + response.code());
             }
             String contentType = response.header("Content-Type");
             String disposition = response.header("Content-Disposition");
@@ -118,7 +134,8 @@ public class HttpClientHelper {
     }
 
     public HttpHeadResponse head(String url, Map<String, String> headers) {
-        Request.Builder builder = new Request.Builder().url(url);
+        HttpUrl safeUrl = remoteUrlPolicy.parseAndValidate(url);
+        Request.Builder builder = new Request.Builder().url(safeUrl);
         if (headers != null) {
             headers.forEach(builder::addHeader);
         }

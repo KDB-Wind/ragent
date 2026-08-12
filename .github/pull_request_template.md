@@ -11,8 +11,9 @@
 ## 验证方式
 
 - [ ] 后端：`./mvnw -B -ntp spotless:check` 通过，`./mvnw -B -ntp -DskipTests package` 通过
-- [ ] 前端（如有改动）：`npm ci && npm run lint && npm run build` 通过
-- [ ] CI 门禁（backend-maven / frontend-build-lint）全绿
+- [ ] 后端：`./mvnw -B -ntp test` 通过（集成测试如适用另用 `-P integration`）
+- [ ] 前端（如有改动）：`npm ci && npm run lint && npm run test && npm run build` 通过
+- [ ] 仓库 CI job（backend-maven / frontend-build-lint）全绿；其 required 状态已通过 GitHub ruleset 复核
 - [ ] 相关功能的手动验证或测试结果
 
 ## 回退路径

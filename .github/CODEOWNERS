@@ -1,14 +1,14 @@
 # 默认 owner：整个仓库由 KDB-Wind 负责
 # 后续模块引入专职维护者时，可把对应行替换为团队/个人。
-# 规则最长路径优先匹配，细化的路径规则会覆盖默认 owner。
+# 同一文件命中多条规则时，以最后一条匹配规则为准。
 * @KDB-Wind
 
 # 后端业务模块
-/bootstrap/rag/ @KDB-Wind
-/bootstrap/ingestion/ @KDB-Wind
-/bootstrap/knowledge/ @KDB-Wind
-/bootstrap/user/ @KDB-Wind
-/bootstrap/admin/ @KDB-Wind
+/bootstrap/src/main/java/com/nageoffer/ai/ragent/rag/ @KDB-Wind
+/bootstrap/src/main/java/com/nageoffer/ai/ragent/ingestion/ @KDB-Wind
+/bootstrap/src/main/java/com/nageoffer/ai/ragent/knowledge/ @KDB-Wind
+/bootstrap/src/main/java/com/nageoffer/ai/ragent/user/ @KDB-Wind
+/bootstrap/src/main/java/com/nageoffer/ai/ragent/admin/ @KDB-Wind
 
 # 基础设施模块
 /infra-ai/ @KDB-Wind

@@ -46,6 +46,10 @@ ragent:
     enabled: true
 
 rag:
+  ingestion:
+    remote:
+      # 默认阻断本机/私网/链路本地/保留地址；确需抓取企业内网文档时仅填写精确主机名，不填 URL 或通配符
+      allowed-private-hosts: []
   storage:
     type: s3  # 可选 s3（rustfs / minio）/ oss（阿里云）
     kb-bucket: ragent-sources        # 全局知识库桶（私有），所有知识库文档按 collectionName 目录隔离；OSS 桶名全局唯一，生产需按部署覆盖

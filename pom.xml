@@ -33,6 +33,10 @@
         <bizlog-sdk.version>3.0.6</bizlog-sdk.version>
         <javax-validation-api.version>2.0.1.Final</javax-validation-api.version>
         <spotless-maven-plugin.version>2.22.1</spotless-maven-plugin.version>
+        <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
+        <maven-surefire-plugin.version>3.2.5</maven-surefire-plugin.version>
+        <jacoco-maven-plugin.version>0.8.14</jacoco-maven-plugin.version>
+        <cyclonedx-maven-plugin.version>2.9.3</cyclonedx-maven-plugin.version>
         <!-- 默认排除集成测试（@Tag("integration")）；integration profile 将其置空以启用 -->
         <surefire.excludedGroups>integration</surefire.excludedGroups>
         <!-- surefire 配置中的 @{argLine} 需要该属性存在（通常由 jacoco 定义）；
@@ -234,6 +238,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+                <version>${maven-compiler-plugin.version}</version>
                 <configuration>
                     <source>${java.version}</source>
                     <target>${java.version}</target>
@@ -257,9 +262,10 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven-surefire-plugin.version}</version>
                 <configuration>
                     <argLine>@{argLine} -javaagent:${org.mockito:mockito-core:jar}</argLine>
-                    <!-- 默认只跑单元测试集合；依赖外部服务（MySQL/Redis/Milvus/模型 API）的
+                    <!-- 默认只跑单元测试集合；依赖外部服务（PostgreSQL/Redis/Milvus/模型 API）的
                          测试类标 @Tag("integration")，通过 -P integration 显式启用 -->
                     <excludedGroups>${surefire.excludedGroups}</excludedGroups>
                 </configuration>
@@ -286,11 +292,47 @@
                     </execution>
                 </executions>
             </plugin>
+
+            <plugin>
+                <groupId>org.cyclonedx</groupId>
+                <artifactId>cyclonedx-maven-plugin</artifactId>
+                <version>${cyclonedx-maven-plugin.version}</version>
+                <inherited>false</inherited>
+                <configuration>
+                    <schemaVersion>1.6</schemaVersion>
+                    <includeBomSerialNumber>true</includeBomSerialNumber>
+                    <includeLicenseText>false</includeLicenseText>
+                    <outputFormat>json</outputFormat>
+                    <outputDirectory>${project.build.directory}/sbom</outputDirectory>
+                    <outputName>backend.cdx</outputName>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco-maven-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 
     <profiles>
-        <!-- opt-in 集成测试：需要 MySQL/Redis/Milvus/模型 API 等外部服务，
+        <!-- opt-in 集成测试：需要 PostgreSQL/Redis/Milvus/模型 API 等外部服务，
              默认 CI 不触碰（见 surefire excludedGroups），本地或专用 CI job 显式启用 -->
         <profile>
             <id>integration</id>

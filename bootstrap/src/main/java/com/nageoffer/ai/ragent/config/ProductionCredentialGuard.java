@@ -22,7 +22,7 @@ import org.springframework.boot.env.EnvironmentPostProcessor;
 import org.springframework.core.Ordered;
 import org.springframework.core.env.ConfigurableEnvironment;
 
-import java.util.Arrays;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -30,8 +30,8 @@ import java.util.Set;
  * 生产 profile 下的开发默认凭据 fail-fast 守卫。
  *
  * <p>application.yaml 携带一组本地开发默认凭据（postgres / 123456 / rustfsadmin 等）。未显式激活
- * profile 或激活集合含 local / dev / test 时完全放行，本地直接启动行为不变；其他 profile（如 prod）
- * 下检查敏感键的生效值：命中已知开发默认值、或占位符无默认值且无法解析时抛
+ * profile 或激活集合全部属于 local / dev / test 时放行，本地直接启动行为不变；只要存在其他 profile（如 prod）
+ * 就检查敏感键的生效值：缺失、为空、命中已知开发默认值、或占位符无法解析时抛
  * {@link IllegalStateException} 中断启动，避免弱凭据静默上线。</p>
  *
  * <p>通过 {@code META-INF/spring.factories} 注册（EnvironmentPostProcessor 在 Spring Boot 3 只从
@@ -45,19 +45,31 @@ public class ProductionCredentialGuard implements EnvironmentPostProcessor, Orde
 
     private static final Set<String> DEV_PROFILES = Set.of("local", "dev", "test");
 
-    private static final Map<String, Set<String>> DEV_DEFAULT_CREDENTIALS = Map.of(
+    private static final Map<String, Set<String>> REQUIRED_CREDENTIALS = Map.of(
             "spring.datasource.username", Set.of("postgres", "root"),
             "spring.datasource.password", Set.of("postgres", "123456", "root", "password"),
-            "spring.data.redis.password", Set.of("123456", "password", "redis"),
+            "spring.data.redis.password", Set.of("123456", "password", "redis"));
+
+    private static final Map<String, Set<String>> S3_CREDENTIALS = Map.of(
             "rag.storage.s3.access-key", Set.of("rustfsadmin", "minioadmin"),
             "rag.storage.s3.secret-key", Set.of("rustfsadmin", "minioadmin"));
+
+    private static final Map<String, Set<String>> OSS_CREDENTIALS = Map.of(
+            "rag.storage.oss.access-key", Set.of(),
+            "rag.storage.oss.secret-key", Set.of());
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
         if (isDevLaunch(environment)) {
             return;
         }
-        DEV_DEFAULT_CREDENTIALS.forEach((key, defaults) -> check(environment, key, defaults));
+        REQUIRED_CREDENTIALS.forEach((key, defaults) -> check(environment, key, defaults));
+        String storageType = environment.getProperty("rag.storage.type", "s3").trim().toLowerCase(Locale.ROOT);
+        switch (storageType) {
+            case "s3" -> S3_CREDENTIALS.forEach((key, defaults) -> check(environment, key, defaults));
+            case "oss" -> OSS_CREDENTIALS.forEach((key, defaults) -> check(environment, key, defaults));
+            default -> throw new IllegalStateException("配置键 [rag.storage.type] 的存储类型不受支持，请修正后重启");
+        }
     }
 
     @Override
@@ -66,14 +78,16 @@ public class ProductionCredentialGuard implements EnvironmentPostProcessor, Orde
     }
 
     private boolean isDevLaunch(ConfigurableEnvironment environment) {
-        String active = environment.getProperty("spring.profiles.active");
-        if (active == null || active.isBlank()) {
+        String[] activeProfiles = environment.getActiveProfiles();
+        if (activeProfiles.length == 0) {
             return true;
         }
-        return Arrays.stream(active.split(","))
-                .map(String::trim)
-                .filter(profile -> !profile.isEmpty())
-                .anyMatch(DEV_PROFILES::contains);
+        for (String profile : activeProfiles) {
+            if (!DEV_PROFILES.contains(profile.trim())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void check(ConfigurableEnvironment environment, String key, Set<String> devDefaults) {
@@ -84,7 +98,11 @@ public class ProductionCredentialGuard implements EnvironmentPostProcessor, Orde
             throw new IllegalStateException(
                     "配置键 [" + key + "] 的占位符未配置且无默认值，请通过环境变量或 secret 覆盖后重启");
         }
-        if (value != null && devDefaults.contains(value)) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException(
+                    "配置键 [" + key + "] 未配置或为空，请通过环境变量或 secret 覆盖后重启");
+        }
+        if (devDefaults.contains(value.trim())) {
             throw new IllegalStateException(
                     "配置键 [" + key + "] 检测到开发默认值，请通过环境变量或 secret 覆盖后重启");
         }

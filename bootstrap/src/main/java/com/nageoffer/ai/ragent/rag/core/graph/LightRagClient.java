@@ -61,6 +61,7 @@ public class LightRagClient {
     private final ObjectMapper objectMapper;
     private final GraphProperties properties;
     private final SearchChannelProperties searchProperties;
+    private final HttpUrl baseUrl;
 
     public LightRagClient(@Qualifier("syncHttpClient") OkHttpClient httpClient,
                           ObjectMapper objectMapper,
@@ -70,6 +71,7 @@ public class LightRagClient {
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.searchProperties = searchProperties;
+        this.baseUrl = parseBaseUrl(properties.getLightrag().getBaseUrl());
     }
 
     /**
@@ -118,10 +120,7 @@ public class LightRagClient {
      */
     public JsonNode fetchGraph(String label, int maxDepth, int maxNodes) {
         try {
-            HttpUrl base = HttpUrl.parse(url("/graphs"));
-            if (base == null) {
-                return null;
-            }
+            HttpUrl base = url("/graphs");
             HttpUrl target = base.newBuilder()
                     .addQueryParameter("label", StrUtil.isNotBlank(label) ? label : "*")
                     .addQueryParameter("max_depth", String.valueOf(Math.max(1, maxDepth)))
@@ -145,10 +144,7 @@ public class LightRagClient {
     public List<String> fetchLabels(String keyword, int limit) {
         try {
             boolean popular = StrUtil.isBlank(keyword);
-            HttpUrl base = HttpUrl.parse(url(popular ? "/graph/label/popular" : "/graph/label/search"));
-            if (base == null) {
-                return List.of();
-            }
+            HttpUrl base = url(popular ? "/graph/label/popular" : "/graph/label/search");
             HttpUrl.Builder builder = base.newBuilder();
             if (popular) {
                 builder.addQueryParameter("limit", String.valueOf(clamp(limit, 300, 1000)));
@@ -303,8 +299,26 @@ public class LightRagClient {
                 .delete(RequestBody.create(objectMapper.writeValueAsString(body), JSON))), path);
     }
 
-    private String url(String path) {
-        return StrUtil.removeSuffix(properties.getLightrag().getBaseUrl(), "/") + path;
+    private HttpUrl url(String path) {
+        HttpUrl resolved = baseUrl.resolve(StrUtil.removePrefix(path, "/"));
+        if (resolved == null) {
+            throw new IllegalArgumentException("LightRAG 请求路径不合法");
+        }
+        return resolved;
+    }
+
+    private HttpUrl parseBaseUrl(String rawBaseUrl) {
+        HttpUrl parsed = rawBaseUrl == null ? null : HttpUrl.parse(rawBaseUrl.trim());
+        if (parsed == null
+                || !("http".equals(parsed.scheme()) || "https".equals(parsed.scheme()))
+                || !parsed.username().isEmpty()
+                || !parsed.password().isEmpty()
+                || parsed.query() != null
+                || parsed.fragment() != null) {
+            throw new IllegalArgumentException("LightRAG base URL 必须是不含凭据、query 和 fragment 的 HTTP(S) 地址");
+        }
+        String path = parsed.encodedPath();
+        return parsed.newBuilder().encodedPath(path.endsWith("/") ? path : path + "/").build();
     }
 
     /**

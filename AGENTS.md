@@ -19,8 +19,8 @@ Ragent 是一个企业级 Agentic RAG 智能体平台：后端 Java 17 + Spring 
 ./mvnw -B -ntp spotless:apply   # 手动格式化
 ./mvnw -B -ntp -DskipTests package  # 编译构建（CI 用）
 ./mvnw -B -ntp test  # 单元测试（默认排除 @Tag("integration") 的集成测试）
-./mvnw -B -ntp test -P integration  # opt-in 集成测试（需 MySQL/Redis/Milvus/模型 API）
-./mvnw -B -ntp test -pl bootstrap -Dtest=QueryRewriteTests  # 单模块/单测试
+./mvnw -B -ntp test -P integration  # opt-in 集成测试（需 PostgreSQL/Redis/Milvus/模型 API）
+./mvnw -B -ntp -pl bootstrap -am -P integration -Dtest=QueryRewriteTests -Dsurefire.failIfNoSpecifiedTests=false test  # 集成测试类定向运行
 ```
 
 注意：spotless `apply` 绑定在 compile 阶段，改动代码后本地构建会自动格式化；CI 以 `spotless:check` 作为门禁。
@@ -31,6 +31,7 @@ Ragent 是一个企业级 Agentic RAG 智能体平台：后端 Java 17 + Spring 
 cd frontend
 npm ci
 npm run test    # Vitest 单元测试（jsdom，全部测试文件）
+npm run test:coverage  # CI 使用：测试 + V8 coverage 低基线门禁
 npm run lint
 npm run build
 npm run dev     # 开发服务器 5173，/api 代理到 localhost:9090
@@ -59,15 +60,15 @@ mcp-server  -> (独立应用，无内部模块依赖)
 
 application.yaml 携带本地开发默认凭据，生产部署必须覆盖。`ProductionCredentialGuard`（`bootstrap` 模块，`EnvironmentPostProcessor`，Boot 3 机制注册）在启动最前置阶段执行 fail-fast：
 
-- **放行条件**：未显式激活任何 profile，或激活 profile 集合含 `local` / `dev` / `test` 任一。本地直接启动（无 profile）行为保持不变。
-- **检查时机**：其他 profile（如 `prod`）下，对以下敏感键检查生效值，命中开发默认值即抛 `IllegalStateException` 中断启动（消息只含键名，不含值）：
+- **放行条件**：未显式激活任何 profile，或全部 active profile 均属于 `local` / `dev` / `test`。只要集合中存在 `prod` / `staging` 等非开发 profile 就执行检查。
+- **检查时机**：非开发 profile 下，对以下敏感键检查生效值；缺失、为空或命中开发默认值均抛 `IllegalStateException` 中断启动（消息只含键名，不含值）：
   - `spring.datasource.username`
   - `spring.datasource.password`
   - `spring.data.redis.password`
-  - `rag.storage.s3.access-key`
-  - `rag.storage.s3.secret-key`
-- **占位符检查**：值以 `${` 开头且无默认值时（如 `${DB_PASSWORD}`），若环境变量/secret 无法解析同样中断启动；`${KEY:默认值}` 的默认值命中开发默认凭据集合也会中断。
-- **模型 API key 走环境变量属正向机制**（`BAILIAN_API_KEY`、`SILICONFLOW_API_KEY`、`AIHUBMIX_API_KEY`、`MINERU_API_KEY`、`OSS_ACCESS_KEY`、`OSS_SECRET_KEY`、`YDC_API_KEY` 等），不参与守卫检查，但生产必须提供。
+  - `rag.storage.s3.access-key` / `rag.storage.s3.secret-key`（仅 `rag.storage.type=s3`）
+  - `rag.storage.oss.access-key` / `rag.storage.oss.secret-key`（仅 `rag.storage.type=oss`）
+- **占位符检查**：无法解析的 `${KEY}`、解析为空的 `${KEY:}`、空白值以及命中开发默认值的 `${KEY:默认值}` 均会中断。
+- **模型/API key**：仅被启用的模型、解析器或 Web Search provider 必须提供对应环境变量；对象存储 OSS key 属守卫范围，不归入模型 API key。
 
 生产部署的完整键清单与示例见 `docs/production-configuration.md`。密钥轮换属部署侧运维，守卫不参与；轮换时保证新值先注入、旧值下线，避免空窗期。
 
@@ -82,16 +83,18 @@ application.yaml 携带本地开发默认凭据，生产部署必须覆盖。`Pr
 
 ## 上游同步
 
-本 fork 与上游 `nageoffer/ragent` 的同步 SOP 见 `docs/upstream-sync.md`。常用命令：
+本 fork 与上游 `nageoffer/ragent` 的同步 SOP 见 `docs/upstream-sync.md`。以下为 Bash 示例；PowerShell 版本见完整 SOP：
 
 ```bash
 git fetch upstream
-git checkout -b sync/upstream-$(date +%Y%m%d) origin/main
+sync_date=$(date +%Y%m%d)
+git checkout -b "sync/upstream-$sync_date" origin/main
 git merge upstream/main
 ./mvnw -B -ntp test        # 合并后必跑
-cd frontend && npm ci && npm run test && npm run build
-git push origin sync/upstream-<日期>
-gh pr create --base main --head sync/upstream-<日期> --title "chore: sync upstream main (<日期>)"
+cd frontend && npm ci && npm run lint && npm run test && npm run build
+cd ..
+git push origin "sync/upstream-$sync_date"
+gh pr create --base main --head "sync/upstream-$sync_date" --title "chore: sync upstream main ($sync_date)"
 ```
 
 冲突原则：测试基线（surefire 配置、vitest/RTL、CI workflow、AGENTS.md）保留 fork 版；上游业务代码不静默修改。
@@ -99,8 +102,15 @@ gh pr create --base main --head sync/upstream-<日期> --title "chore: sync upst
 ## CI 要求
 
 - `backend-maven`：`spotless:check` 与 `./mvnw -B -ntp verify` 必须通过（verify 包含默认单元测试集合；依赖外部服务的集成测试已用 `@Tag("integration")` 隔离，通过 `-P integration` 显式运行）
-- `frontend-build-lint`：`npm run build` 与 `npm run test` 为硬门禁；`npm run lint` 已启用并记录结果，但存量 21 个 lint error 为既有技术债，暂不阻塞（修复列入后续计划）
-- main 分支受 ruleset 保护：只能通过 PR 合入，需要 1 个 approve + CODEOWNERS review + 上述 check 全绿
+- `frontend-build-lint`：`npm run lint`、`npm run test:coverage` 与 `npm run build` 均为硬门禁；当前 lint 基线为 0 error / 0 warning
+- 仓库中已定义 main ruleset 所需的 CI job；ruleset 是否处于 active、required check context 是否精确匹配、bypass 边界是否安全，必须通过 GitHub API 或仓库设置页另行复核，不以仓库文件推定
+- CodeQL 与 Dependency Review workflow 已纳入仓库；它们是否被 ruleset 配置为 required、CodeQL 告警是否阻断合并，属于 GitHub 端配置，未取得接口证据前均记为“未验证”
+
+## Code Review Rules
+
+- DeepSeek 日常第一层审查只能由维护者在 PR 评论 `/deepseek-review` 手动触发；它只提供 COMMENTED 类型反馈，不构成 approval，不得修改或合并 PR。
+- 官方 Codex 第二层审查仅在高风险或准备合并的 PR 上用 `@codex review` 手动触发；不开启 automatic reviews。
+- 审查优先关注行为回归、认证授权、凭据泄露、SSRF、注入、资源清理、并发、配置门禁和测试缺口；格式与 lint 交给 CI。
 
 ## 协作 owner
 
