@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -173,6 +174,30 @@ class LightRagClientTest {
         credentialProperties.getLightrag().setBaseUrl("http://user:secret@localhost:9621");
         assertThrows(IllegalArgumentException.class,
                 () -> new LightRagClient(new OkHttpClient(), objectMapper, credentialProperties, searchProperties));
+
+        GraphProperties queryProperties = new GraphProperties();
+        queryProperties.getLightrag().setBaseUrl("http://localhost:9621/?workspace=other");
+        assertThrows(IllegalArgumentException.class,
+                () -> new LightRagClient(new OkHttpClient(), objectMapper, queryProperties, searchProperties));
+
+        GraphProperties fragmentProperties = new GraphProperties();
+        fragmentProperties.getLightrag().setBaseUrl("http://localhost:9621/#fragment");
+        assertThrows(IllegalArgumentException.class,
+                () -> new LightRagClient(new OkHttpClient(), objectMapper, fragmentProperties, searchProperties));
+    }
+
+    @Test
+    @DisplayName("LightRAG base URL 接受合法 IPv6 与 IDN 主机")
+    void validCanonicalHostsAreAccepted() {
+        GraphProperties ipv6Properties = new GraphProperties();
+        ipv6Properties.getLightrag().setBaseUrl("http://[::1]:9621");
+        assertDoesNotThrow(
+                () -> new LightRagClient(new OkHttpClient(), objectMapper, ipv6Properties, searchProperties));
+
+        GraphProperties idnProperties = new GraphProperties();
+        idnProperties.getLightrag().setBaseUrl("http://例子.测试");
+        assertDoesNotThrow(
+                () -> new LightRagClient(new OkHttpClient(), objectMapper, idnProperties, searchProperties));
     }
 
     private MockResponse json(String body) {

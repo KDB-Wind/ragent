@@ -35,6 +35,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -308,17 +309,33 @@ public class LightRagClient {
     }
 
     private HttpUrl parseBaseUrl(String rawBaseUrl) {
-        HttpUrl parsed = rawBaseUrl == null ? null : HttpUrl.parse(rawBaseUrl.trim());
-        if (parsed == null
-                || !("http".equals(parsed.scheme()) || "https".equals(parsed.scheme()))
-                || !parsed.username().isEmpty()
-                || !parsed.password().isEmpty()
-                || parsed.query() != null
-                || parsed.fragment() != null) {
+        HttpUrl candidate = rawBaseUrl == null ? null : HttpUrl.parse(rawBaseUrl.trim());
+        if (candidate == null
+                || !("http".equals(candidate.scheme()) || "https".equals(candidate.scheme()))
+                || !candidate.username().isEmpty()
+                || !candidate.password().isEmpty()
+                || candidate.query() != null
+                || candidate.fragment() != null) {
             throw new IllegalArgumentException("LightRAG base URL 必须是不含凭据、query 和 fragment 的 HTTP(S) 地址");
         }
-        String path = parsed.encodedPath();
-        return parsed.newBuilder().encodedPath(path.endsWith("/") ? path : path + "/").build();
+        URI canonicalUri = URI.create(candidate.toString());
+        String uriHost = canonicalUri.getHost();
+        if (uriHost != null && uriHost.startsWith("[") && uriHost.endsWith("]")) {
+            uriHost = uriHost.substring(1, uriHost.length() - 1);
+        }
+        if (uriHost == null || !uriHost.equals(candidate.host())) {
+            throw new IllegalArgumentException("LightRAG base URL 主机格式不安全");
+        }
+        HttpUrl safeUrl = HttpUrl.parse(canonicalUri.toASCIIString());
+        if (safeUrl == null) {
+            throw new IllegalArgumentException("LightRAG base URL 格式不安全");
+        }
+        // baseUrl is administrator-controlled service configuration. Runtime safety also relies on
+        // every request path being a compile-time constant and user input entering only through
+        // HttpUrl.Builder query parameters. This parser check prevents URI/OkHttp authority ambiguity;
+        // it is not an allowlist for private service addresses because local LightRAG is supported.
+        String path = safeUrl.encodedPath();
+        return safeUrl.newBuilder().encodedPath(path.endsWith("/") ? path : path + "/").build();
     }
 
     /**
