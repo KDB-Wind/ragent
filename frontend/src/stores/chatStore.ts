@@ -6,7 +6,8 @@ import type {
   FeedbackValue,
   Message,
   MessageDeltaPayload,
-  Session
+  Session,
+  StreamMetaPayload
 } from "@/types";
 import {
   listMessages,
@@ -306,7 +307,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const token = storage.getToken();
 
     const handlers = {
-      onMeta: (payload: { conversationId: string; taskId: string }) => {
+      onMeta: (payload: StreamMetaPayload) => {
         if (get().streamingMessageId !== assistantId) return;
         const nextId = payload.conversationId || get().currentSessionId;
         if (!nextId) return;

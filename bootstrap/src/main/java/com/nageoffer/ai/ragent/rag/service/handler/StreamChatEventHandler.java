@@ -79,16 +79,22 @@ public class StreamChatEventHandler implements StreamCallback {
         this.messageChunkSize = resolveMessageChunkSize(params.getModelProperties());
         this.sendTitleOnComplete = shouldSendTitle();
 
-        // 初始化（发送初始事件、注册任务）
+        // 先返回 taskId，保证排队期间也可取消；Trace 建立后会发送一次带 traceId 的 META 更新。
         initialize();
     }
 
     /**
-     * 初始化：发送元数据事件并注册任务
+     * 初始化：发送可取消所需的元数据并注册任务
      */
     private void initialize() {
-        sender.sendEvent(SSEEventType.META.value(), new MetaPayload(conversationId, taskId));
+        sender.sendEvent(SSEEventType.META.value(), new MetaPayload(conversationId, taskId, null));
         taskManager.register(taskId, sender, this::buildCompletionPayloadOnCancel);
+    }
+
+    @Override
+    public void onTraceStarted(String traceId) {
+        taskManager.attachTrace(taskId, traceId);
+        sender.sendEvent(SSEEventType.META.value(), new MetaPayload(conversationId, taskId, traceId));
     }
 
     /**
@@ -127,7 +133,9 @@ public class StreamChatEventHandler implements StreamCallback {
                 message.setMessageStatus(ChatMessage.MessageStatus.INTERRUPTED);
                 messageId = memoryService.append(conversationId, userId, message);
             } catch (Exception e) {
-                log.error("取消时持久化消息失败，conversationId：{}", conversationId, e);
+                log.error("Failed to persist cancelled SSE message: traceId={}, taskId={}, errorType={}",
+                        StreamTaskManager.safeCorrelationId(taskManager.traceId(taskId)),
+                        StreamTaskManager.safeCorrelationId(taskId), e.getClass().getSimpleName());
             }
         }
         String title = resolveTitleForEvent();
@@ -209,13 +217,18 @@ public class StreamChatEventHandler implements StreamCallback {
             message.setMessageStatus(ChatMessage.MessageStatus.NORMAL);
             messageId = memoryService.append(conversationId, userId, message);
         } catch (Exception e) {
-            log.error("对话完成时持久化消息失败，conversationId：{}", conversationId, e);
+            log.error("Failed to persist completed SSE message: traceId={}, taskId={}, errorType={}",
+                    StreamTaskManager.safeCorrelationId(taskManager.traceId(taskId)),
+                    StreamTaskManager.safeCorrelationId(taskId), e.getClass().getSimpleName());
         }
         String title = resolveTitleForEvent();
         String messageIdText = StrUtil.isBlank(messageId) ? null : messageId;
         sender.sendEvent(SSEEventType.FINISH.value(),
                 new CompletionPayload(messageIdText, title, sources, ChatMessage.MessageStatus.NORMAL));
         sender.sendEvent(SSEEventType.DONE.value(), "[DONE]");
+        log.info("SSE stream completed: traceId={}, taskId={}",
+                StreamTaskManager.safeCorrelationId(taskManager.traceId(taskId)),
+                StreamTaskManager.safeCorrelationId(taskId));
         taskManager.unregister(taskId);
         sender.complete();
     }
@@ -225,6 +238,9 @@ public class StreamChatEventHandler implements StreamCallback {
         if (taskManager.isCancelled(taskId)) {
             return;
         }
+        log.warn("SSE stream failed: traceId={}, taskId={}",
+                StreamTaskManager.safeCorrelationId(taskManager.traceId(taskId)),
+                StreamTaskManager.safeCorrelationId(taskId));
         taskManager.unregister(taskId);
         sender.fail(t);
     }

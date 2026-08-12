@@ -87,6 +87,23 @@ public class StreamTaskManager {
         }
     }
 
+    public void attachTrace(String taskId, String traceId) {
+        getOrCreate(taskId).traceId = traceId;
+    }
+
+    public String traceId(String taskId) {
+        StreamTaskInfo info = tasks.getIfPresent(taskId);
+        return info == null ? null : info.traceId;
+    }
+
+    public void bindCancellationObserver(String taskId, Runnable observer) {
+        StreamTaskInfo taskInfo = getOrCreate(taskId);
+        taskInfo.cancellationObserver = observer;
+        if (taskInfo.cancelled.get()) {
+            notifyCancellationObserver(taskInfo);
+        }
+    }
+
     public void bindHandle(String taskId, StreamCancellationHandle handle) {
         StreamTaskInfo taskInfo = getOrCreate(taskId);
         taskInfo.handle = handle;
@@ -101,6 +118,7 @@ public class StreamTaskManager {
     }
 
     public void cancel(String taskId) {
+        log.info("SSE cancellation requested: taskId={}", safeCorrelationId(taskId));
         // 先设置 Redis 标记，再发布消息
         RBucket<Boolean> bucket = redissonClient.getBucket(cancelKey(taskId));
         bucket.set(Boolean.TRUE, CANCEL_TTL);
@@ -139,15 +157,21 @@ public class StreamTaskManager {
             return;
         }
 
-        if (taskInfo.handle != null) {
-            taskInfo.handle.cancel();
-        }
+        try {
+            if (taskInfo.handle != null) {
+                taskInfo.handle.cancel();
+            }
 
-        // 在取消时执行回调，保存已累积的内容
-        if (taskInfo.sender != null) {
-            CompletionPayload payload = taskInfo.onCancelSupplier.get();
-            sendCancelAndDone(taskInfo.sender, payload);
-            taskInfo.sender.complete();
+            // 在取消时执行回调，保存已累积的内容
+            if (taskInfo.sender != null) {
+                CompletionPayload payload = taskInfo.onCancelSupplier.get();
+                sendCancelAndDone(taskInfo.sender, payload);
+                taskInfo.sender.complete();
+            }
+        } finally {
+            notifyCancellationObserver(taskInfo);
+            log.info("SSE cancellation applied: traceId={}, taskId={}",
+                    safeCorrelationId(taskInfo.traceId), safeCorrelationId(taskId));
         }
     }
 
@@ -169,6 +193,17 @@ public class StreamTaskManager {
         sender.sendEvent(SSEEventType.DONE.value(), "[DONE]");
     }
 
+    private void notifyCancellationObserver(StreamTaskInfo taskInfo) {
+        Runnable observer = taskInfo.cancellationObserver;
+        if (observer != null && taskInfo.cancellationObserved.compareAndSet(false, true)) {
+            observer.run();
+        }
+    }
+
+    public static String safeCorrelationId(String value) {
+        return value != null && value.matches("[A-Za-z0-9_-]{1,64}") ? value : "<unavailable>";
+    }
+
     @SneakyThrows
     private StreamTaskInfo getOrCreate(String taskId) {
         return tasks.get(taskId, StreamTaskInfo::new);
@@ -176,8 +211,11 @@ public class StreamTaskManager {
 
     private static final class StreamTaskInfo {
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
+        private final AtomicBoolean cancellationObserved = new AtomicBoolean(false);
         private volatile StreamCancellationHandle handle;
         private volatile SseEmitterSender sender;
         private volatile Supplier<CompletionPayload> onCancelSupplier;
+        private volatile Runnable cancellationObserver;
+        private volatile String traceId;
     }
 }
