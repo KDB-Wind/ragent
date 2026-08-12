@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { useChatStore } from "@/stores/chatStore";
 import { createStreamResponse } from "@/hooks/useStreamResponse";
@@ -34,15 +34,15 @@ const createStreamResponseMock = vi.mocked(createStreamResponse);
 const stopTaskMock = vi.mocked(stopTask);
 const storageMock = vi.mocked(storage);
 
-let startMock: ReturnType<typeof vi.fn>;
+let startMock: Mock<() => Promise<void>>;
 let capturedHandlers: Parameters<typeof createStreamResponse>[1] | undefined;
 
 function mockStream() {
-  startMock = vi.fn();
+  startMock = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
   capturedHandlers = undefined;
   createStreamResponseMock.mockImplementation((_options, handlers) => {
     capturedHandlers = handlers;
-    return { start: startMock, cancel: vi.fn() };
+    return { start: startMock, cancel: vi.fn<() => void>() };
   });
 }
 

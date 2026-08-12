@@ -7,6 +7,7 @@ cd frontend
 npm ci
 npm run test        # 单次运行全部单元测试
 npm run test:watch  # 监听模式
+npm run test:coverage # CI：测试并验证 coverage 低基线
 ```
 
 - 测试文件位置：与源码同目录的 `__tests__/` 下（`src/hooks/__tests__/`、`src/stores/__tests__/`、`src/components/chat/__tests__/` 等）。
@@ -28,7 +29,7 @@ server: {
   port: 5173,
   proxy: {
     "/api": {
-      target: "http://localhost:8080",
+      target: "http://localhost:9090",
       changeOrigin: true,
       secure: false
     }
@@ -40,24 +41,23 @@ server: {
 
 #### 1. 确认后端服务运行
 ```bash
-curl http://localhost:8080/api/ragent/knowledge-base
+curl http://localhost:9090/api/ragent/knowledge-base
 # 应该返回：{"code":"A000001","message":"未登录或登录已过期",...}
 # 这说明后端服务正常，只是需要登录
 ```
 
 #### 2. 重启前端开发服务器
 ```bash
-cd /Users/machen/workspace/nageoffer/ragent/frontend
+cd frontend
 
-# 停止旧的服务器（如果有）
-pkill -f "vite"
+# 若旧的开发服务器仍在运行，先在其终端按 Ctrl+C 停止
 
 # 启动新的服务器
 npm run dev
 ```
 
 #### 3. 访问前端
-打开浏览器访问：http://localhost:5173 或 http://localhost:5174
+打开终端输出所示的 Local URL（默认 http://localhost:5173；端口占用时 Vite 会选择其他可用端口）。
 
 #### 4. 登录测试
 1. 使用管理员账号登录（role='admin'）
@@ -94,7 +94,7 @@ UPDATE t_user SET role = 'admin' WHERE username = 'your_username';
 
 | 前端请求 | 代理后 | 后端实际路径 |
 |---------|--------|-------------|
-| /api/ragent/knowledge-base | http://localhost:8080/api/ragent/knowledge-base | /knowledge-base (context-path已包含/api/ragent) |
+| /api/ragent/knowledge-base | http://localhost:9090/api/ragent/knowledge-base | /knowledge-base (context-path已包含/api/ragent) |
 
 ### 网络请求检查
 
@@ -110,12 +110,11 @@ UPDATE t_user SET role = 'admin' WHERE username = 'your_username';
 - Response: "No static resource..."
 - 解决：检查代理配置，重启开发服务器
 
-### 当前状态
+### 运行前检查
 
-✅ 后端服务运行中：http://localhost:8080
-✅ 前端服务运行中：http://localhost:5174
-✅ 代理配置已添加
-✅ 可以开始测试
+- 后端应监听 `http://localhost:9090`；以当前终端日志或健康检查结果为准。
+- 前端代理配置应指向 `http://localhost:9090`。
+- 前端实际端口以 `npm run dev` 输出为准，不在文档中假定服务正在运行。
 
 ### 下一步
 

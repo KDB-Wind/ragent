@@ -42,6 +42,11 @@ node_modules/
 dist/
 .vite/
 .env.local
+frontend/vite.config.js
+frontend/vite.config.d.ts
+frontend/*.tsbuildinfo
+frontend/frontend.cdx.json
+frontend/coverage/
 resources/docker/graphrag/.env
 
 ### Tmp Out ###

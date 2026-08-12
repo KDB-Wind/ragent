@@ -37,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LightRagClientTest {
@@ -145,6 +146,33 @@ class LightRagClientTest {
         GraphEvidence evidence = client.retrieveByScope("报销流程", "mix", 10, List.of());
 
         assertTrue(evidence.matched().isEmpty());
+    }
+
+    @Test
+    @DisplayName("用户标签只能进入 query 参数，不能改变 LightRAG authority")
+    void graphLabelCannotChangeConfiguredAuthority() throws Exception {
+        server.enqueue(json("{}"));
+
+        client.fetchGraph("//169.254.169.254/latest/meta-data", 1, 10);
+
+        RecordedRequest request = server.takeRequest(2, TimeUnit.SECONDS);
+        assertNotNull(request);
+        assertEquals(server.getHostName(), request.getRequestUrl().host());
+        assertEquals("//169.254.169.254/latest/meta-data", request.getRequestUrl().queryParameter("label"));
+    }
+
+    @Test
+    @DisplayName("LightRAG base URL 在构造时拒绝非 HTTP(S) 与 user-info")
+    void invalidBaseUrlFailsFast() {
+        GraphProperties fileProperties = new GraphProperties();
+        fileProperties.getLightrag().setBaseUrl("file:///etc/passwd");
+        assertThrows(IllegalArgumentException.class,
+                () -> new LightRagClient(new OkHttpClient(), objectMapper, fileProperties, searchProperties));
+
+        GraphProperties credentialProperties = new GraphProperties();
+        credentialProperties.getLightrag().setBaseUrl("http://user:secret@localhost:9621");
+        assertThrows(IllegalArgumentException.class,
+                () -> new LightRagClient(new OkHttpClient(), objectMapper, credentialProperties, searchProperties));
     }
 
     private MockResponse json(String body) {

@@ -29,6 +29,8 @@ import com.nageoffer.ai.ragent.infra.embedding.EmbeddingService;
 import com.nageoffer.ai.ragent.rag.core.vector.VectorRetrieverService;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.service.vector.request.InsertReq;
+import io.milvus.v2.service.vector.request.DeleteReq;
+import io.milvus.v2.service.vector.request.GetReq;
 import io.milvus.v2.service.vector.response.InsertResp;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,6 +53,8 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import static org.junit.jupiter.api.Assertions.fail;
+
 @Slf4j
 @SpringBootTest
 @Tag("integration")
@@ -66,7 +70,7 @@ public class InvoiceIndexDocumentTests {
     private final Tika tika = new Tika();
 
     @Test
-    void indexDocument() throws TikaException, IOException {
+    void indexDocument() throws TikaException, IOException, InterruptedException {
         String filePath = "src/main/resources/file/group/group-finance/开票信息.md";
         String actualDocument = extractText(filePath);
         System.out.println(actualDocument);
@@ -78,13 +82,44 @@ public class InvoiceIndexDocumentTests {
                 chunks
         );
 
-        InsertReq req = InsertReq.builder()
-                .collectionName(ragDefaultProperties.getCollectionName())
-                .data(rows)
-                .build();
+        String collectionName = ragDefaultProperties.getCollectionName();
+        List<Object> insertedIds = rows.stream()
+                .map(row -> (Object) row.get("doc_id").getAsString())
+                .toList();
 
-        InsertResp resp = milvusClient.insert(req);
-        log.info("Indexed file document. documentId={},  chunks={}, insertCnt={}", docId, chunks.size(), resp.getInsertCnt());
+        try {
+            InsertReq req = InsertReq.builder()
+                    .collectionName(collectionName)
+                    .data(rows)
+                    .build();
+
+            InsertResp resp = milvusClient.insert(req);
+            log.info("Indexed file document. documentId={}, chunks={}, insertCnt={}", docId, chunks.size(), resp.getInsertCnt());
+        } finally {
+            milvusClient.delete(DeleteReq.builder()
+                    .collectionName(collectionName)
+                    .ids(insertedIds)
+                    .build());
+
+            assertRowsDeleted(collectionName, insertedIds);
+        }
+    }
+
+    private void assertRowsDeleted(String collectionName, List<Object> insertedIds) throws InterruptedException {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            boolean deleted = milvusClient.get(GetReq.builder()
+                            .collectionName(collectionName)
+                            .ids(insertedIds)
+                            .outputFields(List.of("doc_id"))
+                            .build())
+                    .getGetResults()
+                    .isEmpty();
+            if (deleted) {
+                return;
+            }
+            Thread.sleep(100L);
+        }
+        fail("本次测试插入的向量数据必须在超时前被清理");
     }
 
     @Test

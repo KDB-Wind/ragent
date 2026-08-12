@@ -51,6 +51,7 @@ function parseCsv(text: string): string[][] {
 
 function escapeCell(cell: string): string {
   return (cell ?? "")
+    .replace(/\\/g, "\\\\")
     .replace(/\|/g, "\\|")
     .replace(/\r\n|\r|\n/g, "<br>");
 }

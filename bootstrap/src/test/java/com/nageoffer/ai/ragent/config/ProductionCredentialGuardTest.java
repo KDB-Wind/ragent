@@ -18,7 +18,11 @@
 package com.nageoffer.ai.ragent.config;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.WebApplicationType;
 import org.springframework.mock.env.MockEnvironment;
+
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -40,23 +44,22 @@ class ProductionCredentialGuardTest {
     @Test
     void devProfileAllowsDevDefaults() {
         MockEnvironment environment = new MockEnvironment()
-                .withProperty("spring.profiles.active", "dev")
                 .withProperty("spring.datasource.password", "postgres");
+        environment.setActiveProfiles("dev");
         assertDoesNotThrow(() -> guard.postProcessEnvironment(environment, null));
     }
 
     @Test
     void localProfileAllowsDevDefaults() {
         MockEnvironment environment = new MockEnvironment()
-                .withProperty("spring.profiles.active", "local")
                 .withProperty("rag.storage.s3.secret-key", "rustfsadmin");
+        environment.setActiveProfiles("local");
         assertDoesNotThrow(() -> guard.postProcessEnvironment(environment, null));
     }
 
     @Test
     void prodProfileWithDevCredentialFails() {
-        MockEnvironment environment = new MockEnvironment()
-                .withProperty("spring.profiles.active", "prod")
+        MockEnvironment environment = validProdEnvironment("s3")
                 .withProperty("spring.datasource.password", "postgres");
         IllegalStateException ex = assertThrows(IllegalStateException.class,
                 () -> guard.postProcessEnvironment(environment, null));
@@ -66,16 +69,28 @@ class ProductionCredentialGuardTest {
 
     @Test
     void prodProfileWithEnvOverridePasses() {
-        MockEnvironment environment = new MockEnvironment()
-                .withProperty("spring.profiles.active", "prod")
-                .withProperty("spring.datasource.password", "S3cret-Override!");
+        MockEnvironment environment = validProdEnvironment("s3");
         assertDoesNotThrow(() -> guard.postProcessEnvironment(environment, null));
     }
 
     @Test
+    void programmaticProdProfileIsGuarded() {
+        MockEnvironment environment = validProdEnvironment("s3")
+                .withProperty("spring.datasource.password", "postgres");
+        assertThrows(IllegalStateException.class, () -> guard.postProcessEnvironment(environment, null));
+    }
+
+    @Test
+    void mixedProdAndDevProfilesAreGuarded() {
+        MockEnvironment environment = validProdEnvironment("s3")
+                .withProperty("spring.datasource.password", "postgres");
+        environment.setActiveProfiles("prod", "dev");
+        assertThrows(IllegalStateException.class, () -> guard.postProcessEnvironment(environment, null));
+    }
+
+    @Test
     void prodProfileWithUnresolvablePlaceholderFails() {
-        MockEnvironment environment = new MockEnvironment()
-                .withProperty("spring.profiles.active", "prod")
+        MockEnvironment environment = validProdEnvironment("s3")
                 .withProperty("spring.datasource.password", "${DB_PASSWORD}");
         IllegalStateException ex = assertThrows(IllegalStateException.class,
                 () -> guard.postProcessEnvironment(environment, null));
@@ -85,8 +100,7 @@ class ProductionCredentialGuardTest {
 
     @Test
     void prodProfileWithResolvablePlaceholderPasses() {
-        MockEnvironment environment = new MockEnvironment()
-                .withProperty("spring.profiles.active", "prod")
+        MockEnvironment environment = validProdEnvironment("s3")
                 .withProperty("DB_PASSWORD", "S3cret-Override!")
                 .withProperty("spring.datasource.password", "${DB_PASSWORD}");
         assertDoesNotThrow(() -> guard.postProcessEnvironment(environment, null));
@@ -94,8 +108,7 @@ class ProductionCredentialGuardTest {
 
     @Test
     void prodProfileWithWeakPlaceholderDefaultFails() {
-        MockEnvironment environment = new MockEnvironment()
-                .withProperty("spring.profiles.active", "prod")
+        MockEnvironment environment = validProdEnvironment("s3")
                 .withProperty("spring.datasource.password", "${DB_PASSWORD:postgres}");
         IllegalStateException ex = assertThrows(IllegalStateException.class,
                 () -> guard.postProcessEnvironment(environment, null));
@@ -104,10 +117,71 @@ class ProductionCredentialGuardTest {
     }
 
     @Test
-    void prodProfileWithEmptyPlaceholderDefaultPasses() {
-        MockEnvironment environment = new MockEnvironment()
-                .withProperty("spring.profiles.active", "prod")
+    void prodProfileWithEmptyPlaceholderDefaultFails() {
+        MockEnvironment environment = validProdEnvironment("s3")
                 .withProperty("spring.datasource.password", "${DB_PASSWORD:}");
+        assertThrows(IllegalStateException.class, () -> guard.postProcessEnvironment(environment, null));
+    }
+
+    @Test
+    void prodProfileWithMissingCredentialFails() {
+        MockEnvironment environment = validProdEnvironment("s3");
+        environment.setProperty("spring.data.redis.password", "");
+        assertThrows(IllegalStateException.class, () -> guard.postProcessEnvironment(environment, null));
+    }
+
+    @Test
+    void ossStorageRequiresOssCredentialsButNotS3Credentials() {
+        MockEnvironment environment = validProdEnvironment("oss");
         assertDoesNotThrow(() -> guard.postProcessEnvironment(environment, null));
+    }
+
+    @Test
+    void ossStorageWithMissingSecretFails() {
+        MockEnvironment environment = validProdEnvironment("oss")
+                .withProperty("rag.storage.oss.secret-key", "");
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> guard.postProcessEnvironment(environment, null));
+        assertTrue(ex.getMessage().contains("rag.storage.oss.secret-key"));
+        assertFalse(ex.getMessage().contains("oss-secret"));
+    }
+
+    @Test
+    void registeredGuardRejectsProdDefaultsDuringSpringStartup() {
+        SpringApplication application = new SpringApplication(EmptyApplication.class);
+        application.setWebApplicationType(WebApplicationType.NONE);
+        application.setDefaultProperties(Map.of("spring.profiles.active", "prod", "spring.main.banner-mode", "off"));
+
+        RuntimeException ex = assertThrows(RuntimeException.class, application::run);
+        assertTrue(hasMessageInChain(ex, "配置键 ["));
+    }
+
+    private MockEnvironment validProdEnvironment(String storageType) {
+        MockEnvironment environment = new MockEnvironment()
+                .withProperty("spring.datasource.username", "ragent_prod")
+                .withProperty("spring.datasource.password", "db-secret")
+                .withProperty("spring.data.redis.password", "redis-secret")
+                .withProperty("rag.storage.type", storageType);
+        environment.setActiveProfiles("prod");
+        if ("oss".equals(storageType)) {
+            environment.withProperty("rag.storage.oss.access-key", "oss-access")
+                    .withProperty("rag.storage.oss.secret-key", "oss-secret");
+        } else {
+            environment.withProperty("rag.storage.s3.access-key", "s3-access")
+                    .withProperty("rag.storage.s3.secret-key", "s3-secret");
+        }
+        return environment;
+    }
+
+    private boolean hasMessageInChain(Throwable error, String expected) {
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            if (current.getMessage() != null && current.getMessage().contains(expected)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final class EmptyApplication {
     }
 }

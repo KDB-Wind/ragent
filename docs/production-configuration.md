@@ -6,17 +6,18 @@
 
 `bootstrap/src/main/resources/application.yaml` 为本地开发默认配置，包含一组开发默认凭据（本地数据库口令、对象存储访问密钥等）。这些值仅用于本地起服务，生产环境必须覆盖。
 
-模型供应商 API key（百炼、SiliconFlow、AIHubMix、MinerU、OSS、You.com 等）一律通过环境变量注入（如 `BAILIAN_API_KEY`、`SILICONFLOW_API_KEY`），yaml 中只保留 `${XXX_API_KEY:}` 占位符，属正向机制，不参与守卫检查。
+模型供应商、MinerU 与 You.com 等 API key 通过环境变量注入；仅在对应 provider/功能启用时必须提供。OSS 是对象存储后端，其 access/secret key 由本守卫按 `rag.storage.type=oss` 条件检查。
 
 ## 2. Fail-fast 守卫机制
 
-`ProductionCredentialGuard`（`com.nageoffer.ai.ragent.config`）是 Spring Boot 3 `EnvironmentPostProcessor`，通过 `bootstrap/src/main/resources/META-INF/spring/org.springframework.boot.env.EnvironmentPostProcessor` 注册，在应用启动最前置阶段（早于任何 bean 与连接建立）执行：
+`ProductionCredentialGuard`（`com.nageoffer.ai.ragent.config`）是 Spring Boot 3 `EnvironmentPostProcessor`，通过 `bootstrap/src/main/resources/META-INF/spring.factories` 注册，在应用启动最前置阶段（早于任何 bean 与连接建立）执行：
 
 | 场景 | 行为 |
 |:---|:---|
 | 未激活任何 profile | 放行（本地直接启动体验不变） |
-| 激活集合含 `local` / `dev` / `test` 任一 | 放行 |
-| 其他 profile（如 `prod`）且生效值命中开发默认凭据 | 启动失败 |
+| active profiles 全部属于 `local` / `dev` / `test` | 放行 |
+| active profiles 中存在其他 profile（如 `prod` / `staging`） | 执行全部适用检查 |
+| 非开发 profile 下生效值缺失、为空或命中开发默认凭据 | 启动失败 |
 | 其他 profile 且占位符无默认值、无法从环境变量解析 | 启动失败 |
 | 其他 profile 且 `${KEY:默认值}` 的默认值命中开发默认凭据 | 启动失败 |
 
@@ -24,7 +25,7 @@
 
 ## 3. 生产必须覆盖的键
 
-启动 profile 为生产（非 local/dev/test）时，以下键的生效值不得命中开发默认凭据集合：
+只要存在非开发 active profile，以下基础凭据必须非空且不得命中开发默认凭据集合；对象存储凭据按当前 `rag.storage.type` 二选一检查：
 
 | 键 | 环境变量注入方式（示例） |
 |:---|:---|
@@ -33,6 +34,8 @@
 | `spring.data.redis.password` | `SPRING_DATA_REDIS_PASSWORD` |
 | `rag.storage.s3.access-key` | `RAG_STORAGE_S3_ACCESS_KEY` |
 | `rag.storage.s3.secret-key` | `RAG_STORAGE_S3_SECRET_KEY` |
+| `rag.storage.oss.access-key` | `RAG_STORAGE_OSS_ACCESS_KEY` 或 `OSS_ACCESS_KEY` |
+| `rag.storage.oss.secret-key` | `RAG_STORAGE_OSS_SECRET_KEY` 或 `OSS_SECRET_KEY` |
 
 Spring Boot 的宽松绑定会把环境变量名映射到对应键；也可以使用 `--spring.datasource.password=...` 命令行参数或外部化配置文件。
 
@@ -53,7 +56,7 @@ export SILICONFLOW_API_KEY='<siliconflow-key>'
 ./mvnw -B -ntp -pl bootstrap spring-boot:run
 ```
 
-若任一敏感键仍为开发默认值，启动会立即失败并提示对应键名，不会带弱凭据上线。
+若任一适用敏感键缺失、为空或仍为开发默认值，启动会立即失败并提示对应键名，不会输出配置值。
 
 ## 5. 密钥轮换提醒
 
