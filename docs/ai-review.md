@@ -1,5 +1,7 @@
 # AI 辅助审查
 
+> 本行仅用于验证手动 DeepSeek Review 触发链路。
+
 本仓库采用单维护者治理模型。AI Review 是辅助质量信号，不是独立人工 approval；最终合并决定始终由维护者作出。
 
 ## 第一层：DeepSeek V4 Flash
