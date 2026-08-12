@@ -234,7 +234,7 @@ public class ScheduleRefreshProcessor {
                     state.document != null ? state.document.getKbId() : null,
                     e);
             if (state.phase != Phase.FILE_SWITCHED) {
-                if (state.hasDocumentOccupied()) {
+                if (state.document != null && state.hasDocumentOccupied()) {
                     documentStatusHelper.markFailedIfRunning(state.document.getId());
                 }
                 if (state.ctx != null) {

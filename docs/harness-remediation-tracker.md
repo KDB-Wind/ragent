@@ -19,7 +19,7 @@
 | `production-default-credential-boundary` 默认凭据未隔离 | Medium | ✅ Closed | `ProductionCredentialGuard` 使用实际 active profiles、空值 fail-fast、S3/OSS 条件检查 + 15 单测（含真实 Spring 启动负例） |
 | `integration-isolation-gap` 集成测试无隔离回收 | Medium | ⏳ Partial | opt-in + Milvus 唯一资源/精确清理/postcondition 已实现；真实外部环境运行待验证 |
 | `collaboration-owner-route-gap` 协作责任无 owner 路由 | Low | ✅ Closed | PR #1：CODEOWNERS/PR/Issue 模板/AGENTS.md |
-| `dependency-supply-chain-gap` 供应链无门禁 | Low | ⏳ Partial | Dependabot/CodeQL/Dependency Review + CycloneDX 双端 SBOM + weekly Trivy SCA 已实现；required 安全门禁、后端存量漏洞和制品签名仍待外部/后续处理 |
+| `dependency-supply-chain-gap` 供应链无门禁 | Low | ⏳ Partial | Dependabot/CodeQL/Dependency Review + CycloneDX 双端 SBOM + weekly Trivy SCA 已实现；双语言扫描 job 已 required，但存量告警、Code Scanning 严重度规则和制品签名仍待处理 |
 | `sse-diagnostic-verification-gap` SSE 验证只查传输状态 | Low | ⏳ Partial | 前端 SSE 解析测试 + 脚本 stderr/headers/correlation ID/业务完成断言已实现；尚未对真实服务完成端到端运行 |
 
 五维基线（2026-08-10）：任务理解 58 / 可控执行 49 / 改动验证 46 / 可靠交付 35 / 经验沉淀 35。首次复评在 61–90 天窗口（见 4.5）。
@@ -47,6 +47,7 @@
 - Milvus 写入测试已使用唯一主键/collection，并在 `finally` 精确清理和验证 postcondition；待专用集成环境执行。
 - PR #9 已完成 GitHub CodeQL 重扫，本 PR 的 3 个 SSRF 变体已清零，聚合检查通过；默认分支的存量计数需等合并后再刷新。
 - 前端 `npm audit --audit-level=high` 已无 Critical/High；GitHub Dependabot 告警变化待重新扫描。
+- PR #11（merge commit `cd3a1c0`）补强 LightRAG URL 规范化与 IPv6/IDN 回归测试；合并后 main 的 CI 和 CodeQL 双语言 job 均成功。分页 API 复核仍有 99 个 open CodeQL 告警（2 Critical / 65 Medium / 32 未分级）和 4 个 Medium Dependabot 告警；扫描 job 成功不代表告警已关闭。
 - 完整审核和修复证据见 `docs/governance-remediation-review-20260811.md`。
 
 ## 4. 剩余事项
@@ -57,8 +58,8 @@
 
 - [ ] **轮换 mygpt API key**：曾明文存于 opencode 配置（已迁移 auth.json；fork/上游全历史扫描零泄露），供应商侧轮换一次收尾
 - [ ] **执行 v1.1.0 SQL 升级**：本地与部署库均需执行（先备份，按 `docs/v1.1.0-upgrade-guide.md`）
-- [ ] **消化 Dependabot 漏洞告警**：2026-08-11 API 快照为 58 个 open（1 critical / 23 high / 32 medium / 2 low）；按 critical→high 优先处理，数量变化时以新 API 快照为准
-- [ ] **消化 CodeQL 告警**：2026-08-11 API 快照为 104 个 open（security severity：5 critical / 2 high / 65 medium / 32 未分级），先完成 triage、去重与误报处置，再确定阻断阈值
+- [ ] **消化 Dependabot 漏洞告警**：2026-08-13 分页 API 快照为 4 个 Medium；Draft PR #12 已升级 React Router 与 PrismJS 依赖，Dependency Review 全绿，本地 `npm audit` 为 0；默认分支告警需合并后确认关闭
+- [ ] **消化 CodeQL 告警**：2026-08-13 分页 API 快照为 99 个 open（2 Critical SSRF / 65 Medium / 32 未分级）；Draft PR #12 已处理 4 个锁释放和 4 个空指针路径，CodeQL 双语言全绿且 PR 级新增告警为 0；存量告警是否关闭需合并后复核
 - [x] **收紧 main bypass**：个人 bypass 已移除；单人维护模式下不强制 approval
 - [ ] **定期上游同步**（建议月例行）：按 `docs/upstream-sync.md` SOP
 

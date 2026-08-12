@@ -183,9 +183,7 @@ public class DefaultFileStorageService implements FileStorageService {
             objectStorageClient.streamPut(kbBucket, markerKey, new ByteArrayInputStream(new byte[0]), 0, null);
             log.info("知识库目录创建成功 bucket={}, namespace={}", kbBucket, namespace);
         } finally {
-            if (lock.isHeldByCurrentThread()) {
-                lock.unlock();
-            }
+            lock.unlock();
         }
     }
 

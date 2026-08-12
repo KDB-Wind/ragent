@@ -90,6 +90,17 @@
 
 仓库内已修复当前 5 个 Critical SSRF、1 个 High 鉴权绕过和 1 个 High 前端不完整转义，并增加定向回归测试；前端本地 npm audit 已无 Critical/High。PR #9 的 CodeQL 重扫已通过且无本 PR 新增告警；默认分支存量 CodeQL/Dependabot 告警仍需在合并后按最新 API 快照逐条 triage，不要为清零数字批量 dismiss。
 
+2026-08-13 PR #11 合并后复核（必须使用 `--paginate`，GitHub API 默认只返回首 30 条）：
+
+- main 的 CI 与 CodeQL `java-kotlin` / `javascript-typescript` job 均成功。
+- Code scanning：99 open（2 Critical SSRF / 65 Medium / 32 未分级）。其中 61 条 Medium 为 log injection、4 条为锁释放；扫描成功不等于这些告警关闭。
+- Dependabot：4 open，均为 Medium（React Router 3 条、PrismJS 1 条）；Draft PR #12 已完成依赖升级，本地 build、18 tests、lint、npm audit 全绿，Dependency Review 通过；默认分支告警需合并后确认关闭。
+- Secret scanning：0 open；push protection 已启用。
+
+本轮不直接 dismiss 2 条 SSRF：代码已把 base URL 限定为管理员配置、请求 path 为常量、用户输入只进入 query builder，并有 authority 回归测试，但 GitHub 告警仍为 open。应以修复分支 CodeQL 结果为准；若查询仍无法识别该信任边界，再逐条记录不可达性/信任边界理由后由管理员决定是否 dismiss。
+
+Draft PR #12 的五个 required checks 及 CodeQL 聚合检查均已通过，PR ref 未产生 open CodeQL 告警。该结果证明本 PR 未引入新告警，但不能提前代替合并后的默认分支告警关闭复核。
+
 完成证据：修复 PR、重新扫描结果、关闭或带理由 dismiss 的告警记录。
 
 ## 6. 真实集成测试验收
@@ -139,3 +150,19 @@
 | `integration-isolation-gap` | 隔离环境连续两次真实集成测试通过，且清理 postcondition 有证据 |
 | `dependency-supply-chain-gap` | Dependency Review required；Code Scanning merge protection 生效；Critical/High 存量完成修复或有依据的判定 |
 | `production-default-credential-boundary` | 代码层已闭合；staging 正/负/混合 profile 验收作为发布接受证据 |
+
+## 10. 维护者下次操作清单（PR #12）
+
+以下事项留给维护者在 2026-08-13 白天执行；代理不得代替触发审查、转为 Ready 或合并：
+
+1. 打开 Draft PR #12：<https://github.com/KDB-Wind/ragent/pull/12>，先确认最终 SHA 的 required checks 仍全部为绿色。
+2. 按额度与审查深度选择手动触发：
+   - 日常第一层：评论 `/deepseek-review`；
+   - Codex 复核：评论 `@codex review`。
+   不需要同时触发；AI Review 仅提供建议，不构成独立人工 approval，也不能合并 PR。
+3. 阅读审查结论；如有 actionable comment，先修复并等待新一轮 required checks。对已处理的线程可点击 `Resolve conversation`。
+4. 确认无阻塞项后点击 `Ready for review`，再次确认 PR 可合并，再由维护者决定是否合并。不要启用自动合并。
+5. 合并后让代理复核 main：CI/CodeQL 双语言结果、Dependabot 4 个 Medium 是否关闭、CodeQL 存量数量与规则分布，并把真实结果更新回本文件。
+6. 需要 Better Harness 复评时，在新的对话指令中显式发送 `/better-harness`；普通文字提及“复评”不会触发该技能。复评报告完成后再对照 7 个 findings 更新闭合判定。
+
+与 PR #12 无关、仍需维护者或部署负责人亲自完成的事项：mygpt API key 供应商侧轮换、v1.1.0 真实数据库备份与升级、隔离集成环境/Secrets 准备、staging/production 验收与最终风险接受。

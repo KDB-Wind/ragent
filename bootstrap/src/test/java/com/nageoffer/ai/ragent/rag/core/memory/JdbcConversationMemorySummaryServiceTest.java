@@ -103,7 +103,6 @@ class JdbcConversationMemorySummaryServiceTest {
 
         when(redissonClient.getLock(anyString())).thenReturn(lock);
         when(lock.tryLock()).thenReturn(true);
-        when(lock.isHeldByCurrentThread()).thenReturn(true);
         // 上游 5a1af64 起该 stub 在摘要刷新用例中不触发，需 lenient 保持兼容
         lenient().when(promptTemplateLoader.renderSection(anyString(), anyString(), anyMap())).thenReturn("wrapped summary");
     }

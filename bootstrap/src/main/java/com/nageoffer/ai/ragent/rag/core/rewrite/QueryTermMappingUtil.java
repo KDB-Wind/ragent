@@ -25,7 +25,12 @@ public class QueryTermMappingUtil {
      * - 如果当前位置本身已经是 targetTerm 起始（例如文本中已经是“平安保司”），则不重复替换
      */
     public static String applyMapping(String text, String sourceTerm, String targetTerm) {
-        if (text == null || text.isEmpty() || sourceTerm == null || sourceTerm.isEmpty()) {
+        if (text == null
+                || text.isEmpty()
+                || sourceTerm == null
+                || sourceTerm.isEmpty()
+                || targetTerm == null
+                || targetTerm.isEmpty()) {
             return text;
         }
 
@@ -47,10 +52,7 @@ public class QueryTermMappingUtil {
             sb.append(text, idx, hit);
 
             // 判断当前位置是否已经是 targetTerm 的开头
-            boolean alreadyTarget =
-                    targetTerm != null
-                            && hit + targetLen <= len
-                            && text.startsWith(targetTerm, hit);
+            boolean alreadyTarget = hit + targetLen <= len && text.startsWith(targetTerm, hit);
 
             if (alreadyTarget) {
                 // 已经是目标词开头了，直接按原文拷贝 targetTerm，一次性跳过

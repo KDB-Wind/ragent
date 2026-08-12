@@ -93,9 +93,7 @@ public class StorageInitializer {
             objectStorageClient.createBucket(bucket);
             log.info("对象存储桶创建成功 bucket={}", bucket);
         } finally {
-            if (lock.isHeldByCurrentThread()) {
-                lock.unlock();
-            }
+            lock.unlock();
         }
     }
 }
