@@ -43,6 +43,14 @@ import java.util.List;
 public interface StreamCallback {
 
     /**
+     * Trace 已建立、流式业务即将开始。
+     *
+     * @param traceId 启用 Trace 时的关联 ID；未启用时为 {@code null}
+     */
+    default void onTraceStarted(String traceId) {
+    }
+
+    /**
      * 记录当前回答对应的用户消息 ID
      *
      * @param messageId 用户消息 ID
