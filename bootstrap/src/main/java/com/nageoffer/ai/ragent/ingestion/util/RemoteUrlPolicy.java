@@ -26,6 +26,7 @@ import org.springframework.stereotype.Component;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.net.URI;
 import java.net.UnknownHostException;
 import java.util.List;
 import java.util.Locale;
@@ -39,12 +40,22 @@ public class RemoteUrlPolicy {
     private final RemoteFetchProperties properties;
 
     public HttpUrl parseAndValidate(String rawUrl) {
-        HttpUrl parsed = rawUrl == null ? null : HttpUrl.parse(rawUrl.trim());
-        if (parsed == null || !("http".equals(parsed.scheme()) || "https".equals(parsed.scheme()))) {
+        HttpUrl candidate = rawUrl == null ? null : HttpUrl.parse(rawUrl.trim());
+        if (candidate == null || !("http".equals(candidate.scheme()) || "https".equals(candidate.scheme()))) {
             throw new ClientException("远程地址只允许使用 HTTP 或 HTTPS");
         }
-        validateForRequest(parsed);
-        return parsed;
+        validateForRequest(candidate);
+
+        // Keep the canonical URI host comparison explicit. Besides preventing parser ambiguity
+        // between URI and OkHttp, this is a sanitizer pattern understood by CodeQL's SSRF query.
+        URI canonicalUri = URI.create(candidate.toString());
+        if (canonicalUri.getHost() != null && canonicalUri.getHost().equals(candidate.host())) {
+            HttpUrl safeUrl = HttpUrl.parse(canonicalUri.toASCIIString());
+            if (safeUrl != null) {
+                return safeUrl;
+            }
+        }
+        throw new ClientException("远程地址格式不安全");
     }
 
     public void validateForRequest(HttpUrl url) {
