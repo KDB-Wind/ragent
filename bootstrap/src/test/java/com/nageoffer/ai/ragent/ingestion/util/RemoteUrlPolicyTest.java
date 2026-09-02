@@ -65,6 +65,40 @@ class RemoteUrlPolicyTest {
         policy.validateResolvedHost("LIGHTRAG.INTERNAL", List.of(InetAddress.getByName("10.0.0.8")));
     }
 
+    @Test
+    void rejectsIpv6AddressesCarryingAnEmbeddedIpv4Host() throws Exception {
+        RemoteUrlPolicy policy = policy(Set.of());
+
+        // Built by raw bytes on purpose: this is what an attacker-controlled DNS
+        // AAAA answer looks like, and getByAddress never normalizes it the way
+        // getByName("::ffff:...") would. Both forms judge by their embedded IPv4
+        // address, which the policy must refuse.
+        assertThrows(UnknownHostException.class, () -> policy.validateResolvedHost("mapped-metadata",
+                List.of(InetAddress.getByAddress(mappedIpv6(new byte[]{(byte) 169, (byte) 254, (byte) 169, (byte) 254})))));
+        assertThrows(UnknownHostException.class, () -> policy.validateResolvedHost("mapped-cgnat",
+                List.of(InetAddress.getByAddress(mappedIpv6(new byte[]{100, 0, 0, 1})))));
+        assertThrows(UnknownHostException.class, () -> policy.validateResolvedHost("compatible-loopback",
+                List.of(InetAddress.getByAddress(compatibleIpv6(new byte[]{127, 0, 0, 1})))));
+        // A real global IPv6 address must keep flowing.
+        policy.validateResolvedHost("public-v6", List.of(InetAddress.getByName("2606:4700:4700::1111")));
+    }
+
+    /** ::ffff:a.b.c.d — the IPv4-mapped form (bytes 0-9 zero, 10-11 = 0xff). */
+    private static byte[] mappedIpv6(byte[] ipv4) {
+        byte[] result = new byte[16];
+        result[10] = (byte) 0xff;
+        result[11] = (byte) 0xff;
+        System.arraycopy(ipv4, 0, result, 12, 4);
+        return result;
+    }
+
+    /** ::a.b.c.d — the deprecated IPv4-compatible form (bytes 0-11 zero). */
+    private static byte[] compatibleIpv6(byte[] ipv4) {
+        byte[] result = new byte[16];
+        System.arraycopy(ipv4, 0, result, 12, 4);
+        return result;
+    }
+
     private RemoteUrlPolicy policy(Set<String> allowedPrivateHosts) {
         RemoteFetchProperties properties = new RemoteFetchProperties();
         properties.setAllowedPrivateHosts(allowedPrivateHosts);
