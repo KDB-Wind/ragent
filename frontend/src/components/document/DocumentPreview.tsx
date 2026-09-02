@@ -26,7 +26,7 @@ const PdfPreview = lazy(() =>
   import("@/components/document/PdfPreview").then((m) => ({ default: m.PdfPreview }))
 );
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "/api/ragent").replace(/\/$/, "");
 
 interface DocumentPreviewProps {
   docId: string;
