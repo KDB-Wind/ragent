@@ -69,14 +69,16 @@ class RemoteUrlPolicyTest {
     void rejectsIpv6AddressesCarryingAnEmbeddedIpv4Host() throws Exception {
         RemoteUrlPolicy policy = policy(Set.of());
 
-        // Built by raw bytes on purpose: this is what an attacker-controlled DNS
-        // AAAA answer looks like, and getByAddress never normalizes it the way
-        // getByName("::ffff:...") would. Both forms judge by their embedded IPv4
-        // address, which the policy must refuse.
+        // The JDK normalizes the IPv4-mapped form ::ffff:a.b.c.d to an
+        // Inet4Address even when built by raw bytes (getByAddress included), so
+        // those land in the IPv4 checks — which must refuse them. The deprecated
+        // IPv4-compatible form ::a.b.c.d stays an Inet6Address and is what the
+        // 0000::/8 rejection exists for. All three must be refused, and a real
+        // global IPv6 address must keep flowing.
         assertThrows(UnknownHostException.class, () -> policy.validateResolvedHost("mapped-metadata",
                 List.of(InetAddress.getByAddress(mappedIpv6(new byte[]{(byte) 169, (byte) 254, (byte) 169, (byte) 254})))));
         assertThrows(UnknownHostException.class, () -> policy.validateResolvedHost("mapped-cgnat",
-                List.of(InetAddress.getByAddress(mappedIpv6(new byte[]{100, 0, 0, 1})))));
+                List.of(InetAddress.getByAddress(mappedIpv6(new byte[]{100, 64, 0, 1})))));
         assertThrows(UnknownHostException.class, () -> policy.validateResolvedHost("compatible-loopback",
                 List.of(InetAddress.getByAddress(compatibleIpv6(new byte[]{127, 0, 0, 1})))));
         // A real global IPv6 address must keep flowing.
