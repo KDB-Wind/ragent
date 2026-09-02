@@ -117,14 +117,18 @@ public class RemoteUrlPolicy {
                     && first < 224;
         }
         if (address instanceof Inet6Address) {
-            // 0000::/8 is IETF-reserved and holds no globally routable hosts, yet
-            // its head bits sail past the unique-local and documentation checks
-            // below. The block contains the IPv4-mapped form ::ffff:a.b.c.d and
-            // the deprecated IPv4-compatible form ::a.b.c.d, whose real
-            // destination is the embedded IPv4 address — ::ffff:169.254.169.254
-            // reaches a cloud metadata endpoint, ::ffff:100.64.0.1 a CGNAT range.
-            // An attacker-controlled DNS answer can serve such an AAAA record, so
-            // reject the whole block instead of re-deriving the IPv4 rules here.
+            // 0000::/8 carries no legitimate global unicast host, yet its head
+            // bits sail past the unique-local and documentation checks below.
+            // The block contains the IPv4-mapped form ::ffff:a.b.c.d and the
+            // deprecated IPv4-compatible form ::a.b.c.d, whose real destination
+            // is the embedded IPv4 address — ::ffff:169.254.169.254 reaches a
+            // cloud metadata endpoint, ::ffff:100.64.0.1 a CGNAT range. An
+            // attacker-controlled DNS answer can serve such an AAAA record, so
+            // reject the whole block instead of re-deriving the IPv4 rules
+            // here. Accepted trade-off: NAT64/DNS64 deployments synthesizing
+            // 64:ff9b::/96 AAAA records also fall in this block (64:ff9b:: is
+            // global per IANA but first byte 0) and are refused fail-closed;
+            // this server is not intended for IPv6-only upstreams.
             if (Byte.toUnsignedInt(bytes[0]) == 0) {
                 return false;
             }
