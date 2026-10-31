@@ -37,6 +37,18 @@ npm run build
 npm run dev     # 开发服务器 5173，/api 代理到 localhost:9090
 ```
 
+### 最小相关检查路由
+
+局部改动先跑最小相关检查获得快速反馈，提交前仍按影响范围升级到完整门禁。完整映射与升级条件见 `docs/verification-routing.md`。
+
+```bash
+# 后端单个测试类；-am 场景必须关闭“未找到指定测试即失败”
+./mvnw -B -ntp -pl bootstrap -am -Dtest=StreamChatTraceRunnerTest -Dsurefire.failIfNoSpecifiedTests=false test
+
+# 前端单个测试文件
+cd frontend && npm run test -- src/hooks/__tests__/useStreamResponse.test.ts
+```
+
 ## 模块分层
 
 ```text

@@ -58,7 +58,7 @@
 - [ ] **轮换 mygpt API key**：曾明文存于 opencode 配置（已迁移 auth.json；fork/上游全历史扫描零泄露），供应商侧轮换一次收尾
 - [ ] **执行 v1.1.0 SQL 升级**：本地与部署库均需执行（先备份，按 `docs/v1.1.0-upgrade-guide.md`）
 - [ ] **消化 Dependabot 漏洞告警**：2026-08-11 API 快照为 58 个 open（1 critical / 23 high / 32 medium / 2 low）；按 critical→high 优先处理，数量变化时以新 API 快照为准
-- [ ] **消化 CodeQL 告警**：2026-08-11 API 快照为 104 个 open（security severity：5 critical / 2 high / 65 medium / 32 未分级），先完成 triage、去重与误报处置，再确定阻断阈值
+- [ ] **消化 CodeQL 告警**：2026-08-13 分页 API 快照为 99 个 open（2 critical / 65 medium / 32 未分级）；SSE 后续分支已处理其触及文件中的 3 个 log-injection 数据流，最终关闭以 PR 扫描为准；其余继续按严重度 triage
 - [x] **收紧 main bypass**：个人 bypass 已移除；单人维护模式下不强制 approval
 - [ ] **定期上游同步**（建议月例行）：按 `docs/upstream-sync.md` SOP
 
@@ -73,8 +73,10 @@
 ### 4.3 可观测性阶段（31–60 天，含 P3）
 
 - [x] SSE 诊断脚本增强：捕获 stderr/headers/raw SSE、correlation ID、curl 与业务完成断言；真实端到端运行待外部验证
+- [x] SSE 仓库内关联诊断：正常流将同一 `traceId`/`taskId` 贯穿 Trace 记录、SSE META、阶段日志和取消终态；取消以 `CANCELLED` 一次性收尾；真实端到端运行仍待外部验证
+- [x] affected-check 路由：`docs/verification-routing.md` 提供后端模块/类与前端单文件快速检查，并明确升级到完整或真实集成验证的条件
 - [x] coverage ratchet：后端 JaCoCo 报告 + 前端 Vitest V8 低基线硬阈值，见 `docs/coverage-baseline.md`
-- [ ] 可观测性：结构化日志、metrics（模型首包/检索通道/降级次数/SSE 断开原因）、OpenTelemetry tracing、health/liveness、Trace ID 跨前后端
+- [ ] 可观测性后续：metrics（模型首包/检索通道/降级次数/SSE 断开原因）、OpenTelemetry、health/liveness；基础 Trace ID 跨前后端已实现
 - [ ] release 流程：SemVer/changelog/GitHub Release/制品 checksum
 - [ ] Docker/部署 ADR：环境分层、DB migration、备份恢复、RTO/RPO
 - [x] Actions 升级：checkout v7、setup-java v5、CodeQL Action v4（全部固定完整 SHA）

@@ -22,6 +22,7 @@ import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
 import com.nageoffer.ai.ragent.framework.convention.SourceRef;
+import com.nageoffer.ai.ragent.framework.trace.RagTraceContext;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import com.nageoffer.ai.ragent.infra.chat.StreamCallback;
 import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
@@ -80,23 +81,51 @@ public class StreamChatPipeline {
      * 执行流式对话管道
      */
     public void execute(StreamChatContext ctx) {
-        loadMemory(ctx);
-        rewriteQuery(ctx);
-        resolveIntents(ctx);
+        String stage = "memory";
+        try {
+            logStage(stage, ctx);
+            loadMemory(ctx);
+            stage = "rewrite";
+            logStage(stage, ctx);
+            rewriteQuery(ctx);
+            stage = "intent";
+            logStage(stage, ctx);
+            resolveIntents(ctx);
 
-        if (handleGuidance(ctx)) {
-            return;
-        }
-        if (handleSystemOnly(ctx)) {
-            return;
-        }
+            stage = "guidance";
+            logStage(stage, ctx);
+            if (handleGuidance(ctx)) {
+                return;
+            }
+            stage = "system-response";
+            logStage(stage, ctx);
+            if (handleSystemOnly(ctx)) {
+                return;
+            }
 
-        RetrievalContext retrievalCtx = retrieve(ctx);
-        if (handleEmptyRetrieval(ctx, retrievalCtx)) {
-            return;
-        }
+            stage = "retrieval";
+            logStage(stage, ctx);
+            RetrievalContext retrievalCtx = retrieve(ctx);
+            if (handleEmptyRetrieval(ctx, retrievalCtx)) {
+                return;
+            }
 
-        streamRagResponse(ctx, retrievalCtx);
+            stage = "llm-stream";
+            logStage(stage, ctx);
+            streamRagResponse(ctx, retrievalCtx);
+        } catch (RuntimeException ex) {
+            log.warn("SSE pipeline failed: traceId={}, taskId={}, stage={}, errorType={}",
+                    StreamTaskManager.safeCorrelationId(RagTraceContext.getTraceId()),
+                    StreamTaskManager.safeCorrelationId(ctx.getTaskId()), stage,
+                    ex.getClass().getSimpleName());
+            throw ex;
+        }
+    }
+
+    private void logStage(String stage, StreamChatContext ctx) {
+        log.debug("SSE pipeline stage: traceId={}, taskId={}, stage={}",
+                StreamTaskManager.safeCorrelationId(RagTraceContext.getTraceId()),
+                StreamTaskManager.safeCorrelationId(ctx.getTaskId()), stage);
     }
 
     // ==================== 流水线阶段 ====================

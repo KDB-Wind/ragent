@@ -28,11 +28,13 @@ import com.nageoffer.ai.ragent.rag.config.RagTraceProperties;
 import com.nageoffer.ai.ragent.rag.dao.entity.RagTraceNodeDO;
 import com.nageoffer.ai.ragent.rag.dao.entity.RagTraceRunDO;
 import com.nageoffer.ai.ragent.rag.service.RagTraceRecordService;
+import com.nageoffer.ai.ragent.rag.service.handler.StreamTaskManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.Date;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
@@ -48,11 +50,13 @@ public class StreamChatTraceRunner {
     private static final String STATUS_RUNNING = "RUNNING";
     private static final String STATUS_SUCCESS = "SUCCESS";
     private static final String STATUS_ERROR = "ERROR";
+    private static final String STATUS_CANCELLED = "CANCELLED";
     private static final String USER_TTFT_NODE_NAME = "user-first-packet";
     private static final String USER_TTFT_NODE_TYPE = "USER_TTFT";
 
     private final RagTraceProperties traceProperties;
     private final RagTraceRecordService traceRecordService;
+    private final StreamTaskManager taskManager;
 
     /**
      * @param businessLogic 接收 trace 增强后的 callback：onComplete / onError 会触发 finishRun
@@ -70,6 +74,7 @@ public class StreamChatTraceRunner {
 
         String traceId = IdUtil.getSnowflakeNextIdStr();
         long startMillis = System.currentTimeMillis();
+        AtomicBoolean finished = new AtomicBoolean(false);
         traceRecordService.startRun(RagTraceRunDO.builder()
                 .traceId(traceId)
                 .traceName(TRACE_NAME)
@@ -94,16 +99,27 @@ public class StreamChatTraceRunner {
 
             @Override
             protected void onFinish(boolean success, Throwable error) {
-                finishRun(traceId, success, error, startMillis);
+                finishRunOnce(finished, traceId, taskId,
+                        success ? STATUS_SUCCESS : STATUS_ERROR, error, startMillis);
             }
         };
 
         RagTraceContext.setTraceId(traceId);
         RagTraceContext.setTaskId(taskId);
         try {
+            taskManager.bindCancellationObserver(taskId,
+                    () -> finishRunOnce(finished, traceId, taskId, STATUS_CANCELLED, null, startMillis));
+            traceAwareCallback.onTraceStarted(traceId);
+            log.info("SSE stream started: traceId={}, taskId={}",
+                    StreamTaskManager.safeCorrelationId(traceId), StreamTaskManager.safeCorrelationId(taskId));
+            if (taskManager.isCancelled(taskId)) {
+                return;
+            }
             businessLogic.accept(traceAwareCallback);
         } catch (Throwable ex) {
-            log.warn("执行流式对话失败（同步阶段），会话ID：{}，任务ID：{}", conversationId, taskId, ex);
+            log.warn("SSE stream failed synchronously: traceId={}, taskId={}, errorType={}",
+                    StreamTaskManager.safeCorrelationId(traceId), StreamTaskManager.safeCorrelationId(taskId),
+                    ex.getClass().getSimpleName());
             // 走 traceAwareCallback.onError 以复用其内部 CAS，避免与 pipeline 内已触发的终态重复收尾
             try {
                 traceAwareCallback.onError(ex);
@@ -137,21 +153,34 @@ public class StreamChatTraceRunner {
                     .build());
             traceRecordService.finishNode(traceId, nodeId, STATUS_SUCCESS, null, new Date(now), durationMs);
         } catch (Exception e) {
-            log.warn("写入 user-first-packet 节点失败，traceId：{}", traceId, e);
+            log.warn("Failed to record SSE first packet: traceId={}, errorType={}",
+                    StreamTaskManager.safeCorrelationId(traceId), e.getClass().getSimpleName());
         }
     }
 
-    private void finishRun(String traceId, boolean success, Throwable error, long startMillis) {
+    private void finishRunOnce(AtomicBoolean finished,
+                               String traceId,
+                               String taskId,
+                               String status,
+                               Throwable error,
+                               long startMillis) {
+        if (!finished.compareAndSet(false, true)) {
+            return;
+        }
         try {
             traceRecordService.finishRun(
                     traceId,
-                    success ? STATUS_SUCCESS : STATUS_ERROR,
-                    success ? null : truncateError(error),
+                    status,
+                    STATUS_ERROR.equals(status) ? truncateError(error) : null,
                     new Date(),
                     System.currentTimeMillis() - startMillis
             );
+            log.info("SSE stream finished: traceId={}, taskId={}, status={}",
+                    StreamTaskManager.safeCorrelationId(traceId),
+                    StreamTaskManager.safeCorrelationId(taskId), status);
         } catch (Exception e) {
-            log.warn("finishRun 失败，traceId：{}", traceId, e);
+            log.warn("Failed to finish SSE trace: traceId={}, errorType={}",
+                    StreamTaskManager.safeCorrelationId(traceId), e.getClass().getSimpleName());
         }
     }
 
@@ -162,7 +191,8 @@ public class StreamChatTraceRunner {
         try {
             businessLogic.accept(callback);
         } catch (Throwable ex) {
-            log.warn("执行流式对话失败，会话ID：{}，任务ID：{}", conversationId, taskId, ex);
+            log.warn("SSE stream failed without trace: taskId={}, errorType={}",
+                    StreamTaskManager.safeCorrelationId(taskId), ex.getClass().getSimpleName());
             callback.onError(ex);
         }
     }

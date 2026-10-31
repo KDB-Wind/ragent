@@ -40,6 +40,11 @@ public abstract class ForwardingStreamCallback implements StreamCallback {
     }
 
     @Override
+    public final void onTraceStarted(String traceId) {
+        delegate.onTraceStarted(traceId);
+    }
+
+    @Override
     public final void onContent(String content) {
         if (firstContentSeen.compareAndSet(false, true)) {
             try {

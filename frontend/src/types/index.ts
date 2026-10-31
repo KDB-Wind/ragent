@@ -60,6 +60,7 @@ export interface RecommendedQuestionsPayload {
 export interface StreamMetaPayload {
   conversationId: string;
   taskId: string;
+  traceId?: string | null;
 }
 
 export interface MessageDeltaPayload {

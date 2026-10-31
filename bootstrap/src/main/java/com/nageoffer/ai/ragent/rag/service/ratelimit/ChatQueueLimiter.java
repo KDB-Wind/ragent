@@ -145,7 +145,9 @@ public class ChatQueueLimiter {
     private void sendRejectEvents(SseEmitter emitter, RejectedContext rejectedContext) {
         SseEmitterSender sender = new SseEmitterSender(emitter);
         if (rejectedContext != null) {
-            sender.sendEvent(SSEEventType.META.value(), new MetaPayload(rejectedContext.conversationId, rejectedContext.taskId));
+            // 限流拒绝发生在 Trace 建立前，不能返回一个没有对应运行记录的伪 traceId。
+            sender.sendEvent(SSEEventType.META.value(),
+                    new MetaPayload(rejectedContext.conversationId, rejectedContext.taskId, null));
             sender.sendEvent(SSEEventType.REJECT.value(), new MessageDelta(RESPONSE_TYPE, REJECT_MESSAGE));
             sender.sendEvent(SSEEventType.FINISH.value(),
                     new CompletionPayload(String.valueOf(rejectedContext.messageId), rejectedContext.title,

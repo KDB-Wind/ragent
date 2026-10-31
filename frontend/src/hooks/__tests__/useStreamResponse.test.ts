@@ -30,7 +30,7 @@ describe("createStreamResponse", () => {
     const fetchMock = vi.fn().mockResolvedValue(
       okResponse(
         sseBody(
-          ["meta", '{"conversationId":"conv-1","taskId":"task-1"}'],
+          ["meta", '{"conversationId":"conv-1","taskId":"task-1","traceId":"trace-1"}'],
           ["message", '{"type":"response","delta":"你好"}'],
           ["finish", '{"messageId":"m-1","title":"会话标题"}'],
           ["done", "[DONE]"]
@@ -68,7 +68,9 @@ describe("createStreamResponse", () => {
     ).start();
 
     expect(events).toEqual(["meta", "message", "finish", "done"]);
-    expect(metaPayloads).toEqual([{ conversationId: "conv-1", taskId: "task-1" }]);
+    expect(metaPayloads).toEqual([
+      { conversationId: "conv-1", taskId: "task-1", traceId: "trace-1" }
+    ]);
     expect(messagePayloads).toEqual([{ type: "response", delta: "你好" }]);
     expect(finishPayloads).toEqual([{ messageId: "m-1", title: "会话标题" }]);
     expect(done).toHaveBeenCalledTimes(1);

@@ -90,6 +90,8 @@
 
 仓库内已修复当前 5 个 Critical SSRF、1 个 High 鉴权绕过和 1 个 High 前端不完整转义，并增加定向回归测试；前端本地 npm audit 已无 Critical/High。PR #9 的 CodeQL 重扫已通过且无本 PR 新增告警；默认分支存量 CodeQL/Dependabot 告警仍需在合并后按最新 API 快照逐条 triage，不要为清零数字批量 dismiss。
 
+2026-08-13 再次分页读取默认分支得到 99 个 open（2 Critical / 65 Medium / 32 未分级）。SSE 诊断后续分支同时消除其所触及文件中的 3 个存量 `java/log-injection` 数据流；是否正式关闭以该 PR CodeQL 扫描和合并后的默认分支快照为准。
+
 完成证据：修复 PR、重新扫描结果、关闭或带理由 dismiss 的告警记录。
 
 ## 6. 真实集成测试验收
@@ -139,3 +141,17 @@
 | `integration-isolation-gap` | 隔离环境连续两次真实集成测试通过，且清理 postcondition 有证据 |
 | `dependency-supply-chain-gap` | Dependency Review required；Code Scanning merge protection 生效；Critical/High 存量完成修复或有依据的判定 |
 | `production-default-credential-boundary` | 代码层已闭合；staging 正/负/混合 profile 验收作为发布接受证据 |
+
+## 10. Better Harness 复评后的个人待办（2026-08-13）
+
+以下事项不能由无真实凭据、基础设施或仓库管理员最终判断的代理代做：
+
+1. 在隔离环境连续运行两次 protected integration workflow，保存 doctor、测试、cleanup/reset postcondition 和脱敏日志。
+2. 在 staging 执行生产凭据守卫的负向、正向、混合 profile 验收。
+3. 轮换曾暴露于本机配置的 API key，并在验证新 key 后吊销旧 key。
+4. 备份后执行 v1.1.0 数据库升级，保存升级和回滚验证证据。
+5. PR 合并后复核默认分支的 CodeQL/Dependabot 最新分页快照；逐条修复或给出技术判定，不批量 dismiss。
+6. 若 GitHub 套餐支持，在 `main-protection` 增加 Code Scanning 结果严重度规则；否则继续保留双语言 required jobs 和人工告警验收。
+7. 在未来至少两个真实开发任务中保存“目标 → 改动 → 最小检查 → 完整检查 → PR 接受结果”，再做纵向 Better Harness 复评。
+
+仓库内已经能先完成的部分是 SSE 关联诊断和 affected-check 路由；这不替代第 1、5、7 项的真实运行与长期证据。
